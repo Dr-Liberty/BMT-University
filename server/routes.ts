@@ -14,7 +14,8 @@ import {
   getPaymasterWalletAddress,
   getNativeBalance,
   parseTokenAmount,
-  getNetworkInfo
+  getNetworkInfo,
+  getKaspacomTokenData
 } from "./kasplex";
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
@@ -846,6 +847,50 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error refreshing balance:", error);
       res.status(500).json({ error: "Failed to refresh balance" });
+    }
+  });
+
+  // Get live token data from Kaspacom DEX API
+  app.get("/api/admin/token-data", adminMiddleware, async (req: any, res) => {
+    try {
+      const config = await storage.getPaymasterConfig();
+      
+      if (!config?.tokenContractAddress) {
+        return res.status(400).json({ error: "Token contract address not configured" });
+      }
+      
+      const tokenData = await getKaspacomTokenData(config.tokenContractAddress);
+      
+      if (!tokenData) {
+        return res.status(500).json({ error: "Failed to fetch token data from Kaspacom DEX" });
+      }
+      
+      res.json(tokenData);
+    } catch (error) {
+      console.error("Error fetching token data:", error);
+      res.status(500).json({ error: "Failed to fetch token data" });
+    }
+  });
+
+  // Get live token data for any token address (public endpoint)
+  app.get("/api/token/:address", async (req, res) => {
+    try {
+      const { address } = req.params;
+      
+      if (!address || !address.startsWith('0x')) {
+        return res.status(400).json({ error: "Invalid token address" });
+      }
+      
+      const tokenData = await getKaspacomTokenData(address);
+      
+      if (!tokenData) {
+        return res.status(404).json({ error: "Token not found or API unavailable" });
+      }
+      
+      res.json(tokenData);
+    } catch (error) {
+      console.error("Error fetching token data:", error);
+      res.status(500).json({ error: "Failed to fetch token data" });
     }
   });
 

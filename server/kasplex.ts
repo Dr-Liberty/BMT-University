@@ -397,6 +397,72 @@ export async function getTransactionReceipt(txHash: string): Promise<any | null>
   }
 }
 
+// Kaspacom DEX API for live token data
+const KASPACOM_DEX_API = 'https://api-defi.kaspa.com';
+
+export interface KaspacomTokenData {
+  id: string;
+  symbol: string;
+  name: string;
+  decimals: string;
+  totalSupply: string;
+  tokenPriceUSD: number;
+  marketCapUSD: number;
+  holders: number;
+  volume24h?: number;
+  priceChange24h?: number;
+}
+
+export async function getKaspacomTokenData(tokenAddress: string): Promise<KaspacomTokenData | null> {
+  try {
+    const response = await fetch(`${KASPACOM_DEX_API}/dex/token/${tokenAddress}/detailed`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      console.error(`Kaspacom API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    return {
+      id: data.id,
+      symbol: data.symbol,
+      name: data.name,
+      decimals: data.decimals,
+      totalSupply: data.totalSupply,
+      tokenPriceUSD: data.tokenPriceUSD || 0,
+      marketCapUSD: data.marketCapUSD || 0,
+      holders: data.holders || 0,
+      volume24h: data.volume24h,
+      priceChange24h: data.priceChange24h,
+    };
+  } catch (error) {
+    console.error('Error fetching Kaspacom token data:', error);
+    return null;
+  }
+}
+
+export async function getKaspacomTokenBasic(tokenAddress: string): Promise<{ symbol: string; name: string; logo?: string } | null> {
+  try {
+    const response = await fetch(`${KASPACOM_DEX_API}/dex/token/${tokenAddress}/logo`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching Kaspacom token basic data:', error);
+    return null;
+  }
+}
+
 export function formatTokenAmount(amount: string, decimals: number): string {
   try {
     const amountNum = BigInt(amount);

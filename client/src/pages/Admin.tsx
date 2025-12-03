@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface PaymasterConfig {
@@ -30,6 +30,12 @@ interface PaymasterConfig {
   formattedBalance?: string;
   cachedBalance?: string;
   lastBalanceCheck?: string;
+  network?: {
+    network: string;
+    chainId: number;
+    rpc: string;
+    explorer: string;
+  };
 }
 
 interface PayoutSummary {
@@ -68,6 +74,19 @@ interface CourseWithStats {
   isPublished: boolean;
 }
 
+interface TokenData {
+  id: string;
+  symbol: string;
+  name: string;
+  decimals: string;
+  totalSupply: string;
+  tokenPriceUSD: number;
+  marketCapUSD: number;
+  holders: number;
+  volume24h?: number;
+  priceChange24h?: number;
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const [editingReward, setEditingReward] = useState<string | null>(null);
@@ -89,6 +108,13 @@ export default function Admin() {
     queryKey: ['/api/admin/courses'],
   });
 
+  const { data: tokenData, isLoading: tokenDataLoading, error: tokenDataError, refetch: refetchTokenData } = useQuery<TokenData>({
+    queryKey: ['/api/admin/token-data'],
+    enabled: !!paymasterConfig?.tokenContractAddress,
+    refetchInterval: 60000, // Refresh every minute
+    retry: 1,
+  });
+
   const [formData, setFormData] = useState({
     walletAddress: '',
     tokenContractAddress: '',
@@ -107,6 +133,7 @@ export default function Admin() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/paymaster'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/token-data'] });
       toast({ title: "Configuration saved", description: "Paymaster wallet settings updated successfully." });
     },
     onError: (error: any) => {
@@ -447,6 +474,135 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Live Market Data Card */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Live Market Data
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchTokenData()}
+                  disabled={tokenDataLoading || !paymasterConfig?.tokenContractAddress}
+                  data-testid="button-refresh-market-data"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${tokenDataLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                Real-time $BMT token data from Kaspacom DEX
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!paymasterConfig?.tokenContractAddress ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Configure token contract address to see market data</p>
+                </div>
+              ) : tokenDataLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)}
+                </div>
+              ) : tokenData ? (
+                <div className="space-y-4">
+                  {/* Token Info Header */}
+                  <div className="flex items-center gap-3 pb-4 border-b">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Coins className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-lg">{tokenData.name}</p>
+                      <p className="text-sm text-muted-foreground">${tokenData.symbol}</p>
+                    </div>
+                  </div>
+
+                  {/* Market Stats Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-muted/50 rounded-lg text-center">
+                      <DollarSign className="w-5 h-5 mx-auto mb-2 text-green-600" />
+                      <p className="text-2xl font-bold text-green-600" data-testid="text-token-price">
+                        ${tokenData.tokenPriceUSD < 0.01 
+                          ? tokenData.tokenPriceUSD.toFixed(8) 
+                          : tokenData.tokenPriceUSD.toFixed(4)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Price USD</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg text-center">
+                      <TrendingUp className="w-5 h-5 mx-auto mb-2 text-blue-600" />
+                      <p className="text-2xl font-bold text-blue-600" data-testid="text-market-cap">
+                        ${tokenData.marketCapUSD >= 1000000 
+                          ? (tokenData.marketCapUSD / 1000000).toFixed(2) + 'M'
+                          : tokenData.marketCapUSD >= 1000 
+                            ? (tokenData.marketCapUSD / 1000).toFixed(1) + 'K'
+                            : tokenData.marketCapUSD.toFixed(0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Market Cap</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg text-center">
+                      <Users className="w-5 h-5 mx-auto mb-2 text-purple-600" />
+                      <p className="text-2xl font-bold text-purple-600" data-testid="text-holders">
+                        {tokenData.holders.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Holders</p>
+                    </div>
+                    <div className="p-4 bg-muted/50 rounded-lg text-center">
+                      <Coins className="w-5 h-5 mx-auto mb-2 text-orange-600" />
+                      <p className="text-2xl font-bold text-orange-600" data-testid="text-total-supply">
+                        {Number(tokenData.totalSupply) >= 1000000000 
+                          ? (Number(tokenData.totalSupply) / 1000000000).toFixed(1) + 'B'
+                          : Number(tokenData.totalSupply) >= 1000000 
+                            ? (Number(tokenData.totalSupply) / 1000000).toFixed(1) + 'M'
+                            : Number(tokenData.totalSupply).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Total Supply</p>
+                    </div>
+                  </div>
+
+                  {/* Contract Address */}
+                  <div className="pt-4 border-t">
+                    <p className="text-xs text-muted-foreground">Contract Address</p>
+                    <a 
+                      href={`https://explorer.kasplex.org/token/${tokenData.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-mono text-primary hover:underline flex items-center gap-1"
+                      data-testid="link-token-explorer"
+                    >
+                      {tokenData.id}
+                      <ArrowUpRight className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : tokenDataError ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-400" />
+                  <p className="text-red-500">Failed to fetch market data</p>
+                  <p className="text-xs">The Kaspacom DEX API may be temporarily unavailable</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-4"
+                    onClick={() => refetchTokenData()}
+                    data-testid="button-retry-market-data"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No market data available</p>
+                  <p className="text-xs">Enter a valid token contract address to see live data</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="rewards">
