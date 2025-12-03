@@ -247,8 +247,11 @@ export type AboutPage = typeof aboutPages.$inferSelect;
 export const paymasterConfig = pgTable("paymaster_config", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
+  tokenContractAddress: varchar("token_contract_address", { length: 100 }),
   tokenTicker: varchar("token_ticker", { length: 20 }).notNull().default('BMT'),
-  tokenDecimals: integer("token_decimals").notNull().default(8),
+  tokenDecimals: integer("token_decimals").notNull().default(18),
+  chainId: integer("chain_id").notNull().default(202555),
+  rpcUrl: varchar("rpc_url", { length: 255 }).notNull().default('https://evmrpc.kasplex.org'),
   isActive: boolean("is_active").notNull().default(true),
   minPayoutAmount: integer("min_payout_amount").notNull().default(1),
   autoPayoutEnabled: boolean("auto_payout_enabled").notNull().default(false),
@@ -268,8 +271,11 @@ export const insertPaymasterConfigSchema = createInsertSchema(paymasterConfig).o
 
 export const updatePaymasterConfigSchema = z.object({
   walletAddress: z.string().min(1).optional(),
+  tokenContractAddress: z.string().optional(),
   tokenTicker: z.string().min(1).optional(),
   tokenDecimals: z.number().int().min(0).optional(),
+  chainId: z.number().int().optional(),
+  rpcUrl: z.string().url().optional(),
   isActive: z.boolean().optional(),
   minPayoutAmount: z.number().int().min(1).optional(),
   autoPayoutEnabled: z.boolean().optional(),

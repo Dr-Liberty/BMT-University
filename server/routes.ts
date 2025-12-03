@@ -5,7 +5,7 @@ import { updateAboutPageSchema, insertCourseSchema, insertLessonSchema, insertQu
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
-import { getKRC20Balance, getKRC20TokenInfo, formatTokenAmount } from "./kasplex";
+import { getERC20Balance, getERC20TokenInfo, formatTokenAmount } from "./kasplex";
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
 async function authMiddleware(req: any, res: any, next: any) {
@@ -732,18 +732,21 @@ export async function registerRoutes(
         return res.json({ configured: false });
       }
       
-      // Fetch live balance from Kasplex API
+      // Fetch live balance from Kasplex EVM RPC
       let liveBalance = null;
       let formattedBalance = null;
       
       try {
-        const balanceData = await getKRC20Balance(config.walletAddress, config.tokenTicker);
-        if (balanceData) {
-          liveBalance = balanceData.balance;
-          formattedBalance = formatTokenAmount(balanceData.balance, config.tokenDecimals);
-          
-          // Update cached balance
-          await storage.updatePaymasterBalance(config.id, balanceData.balance);
+        // Use EVM RPC to get ERC20 token balance
+        if (config.tokenContractAddress) {
+          const balanceData = await getERC20Balance(config.tokenContractAddress, config.walletAddress);
+          if (balanceData) {
+            liveBalance = balanceData.balance;
+            formattedBalance = balanceData.formattedBalance;
+            
+            // Update cached balance
+            await storage.updatePaymasterBalance(config.id, balanceData.balance);
+          }
         }
       } catch (e) {
         console.error('Error fetching live balance:', e);
@@ -800,10 +803,14 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Paymaster not configured" });
       }
       
-      const balanceData = await getKRC20Balance(config.walletAddress, config.tokenTicker);
+      if (!config.tokenContractAddress) {
+        return res.status(400).json({ error: "Token contract address not configured" });
+      }
+      
+      const balanceData = await getERC20Balance(config.tokenContractAddress, config.walletAddress);
       
       if (!balanceData) {
-        return res.status(500).json({ error: "Failed to fetch balance from Kasplex" });
+        return res.status(500).json({ error: "Failed to fetch balance from Kasplex EVM" });
       }
       
       const updated = await storage.updatePaymasterBalance(config.id, balanceData.balance);
@@ -811,7 +818,7 @@ export async function registerRoutes(
       res.json({
         ...updated,
         liveBalance: balanceData.balance,
-        formattedBalance: formatTokenAmount(balanceData.balance, config.tokenDecimals),
+        formattedBalance: balanceData.formattedBalance,
       });
     } catch (error) {
       console.error("Error refreshing balance:", error);
@@ -953,13 +960,20 @@ export async function registerRoutes(
     }
   });
 
-  // Get token info from Kasplex
-  app.get("/api/token/:ticker", async (req, res) => {
+  // Get ERC20 token info from Kasplex EVM
+  app.get("/api/token/:contractAddress", async (req, res) => {
     try {
-      const tokenInfo = await getKRC20TokenInfo(req.params.ticker);
+      const contractAddress = req.params.contractAddress;
+      
+      // Validate it looks like an EVM address
+      if (!/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) {
+        return res.status(400).json({ error: "Invalid contract address format" });
+      }
+      
+      const tokenInfo = await getERC20TokenInfo(contractAddress);
       
       if (!tokenInfo) {
-        return res.status(404).json({ error: "Token not found" });
+        return res.status(404).json({ error: "Token not found or not an ERC20 contract" });
       }
       
       res.json(tokenInfo);
