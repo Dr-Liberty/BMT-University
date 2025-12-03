@@ -1,6 +1,9 @@
 import { Link, useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { Shield } from 'lucide-react';
 import WalletConnectButton from './WalletConnectButton';
 import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
+import { getAuthToken } from '@/lib/auth';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -12,6 +15,14 @@ const navLinks = [
 
 export default function Navbar() {
   const [location] = useLocation();
+  const authToken = getAuthToken();
+  
+  const { data: currentUser } = useQuery<{ id: string; walletAddress: string; role: string }>({
+    queryKey: ['/api/auth/me'],
+    enabled: !!authToken,
+  });
+  
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border" data-testid="nav-main">
@@ -43,6 +54,20 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={`font-heading text-sm uppercase tracking-wide transition-colors flex items-center gap-1.5 ${
+                  location === '/admin' || location.startsWith('/admin/')
+                    ? 'text-kaspa-cyan'
+                    : 'text-muted-foreground hover:text-white'
+                }`}
+                data-testid="link-nav-admin"
+              >
+                <Shield className="w-4 h-4" />
+                Admin
+              </Link>
+            )}
           </div>
 
           <WalletConnectButton />
