@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 const KASPLEX_EVM_RPC = 'https://evmrpc.kasplex.org';
 const KASPLEX_CHAIN_ID = 202555;
 
@@ -6,6 +8,153 @@ const ERC20_DECIMALS_ABI = '0x313ce567';
 const ERC20_SYMBOL_ABI = '0x95d89b41';
 const ERC20_NAME_ABI = '0x06fdde03';
 const ERC20_TOTAL_SUPPLY_ABI = '0x18160ddd';
+const ERC20_TRANSFER_ABI = '0xa9059cbb';
+
+const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address owner) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function symbol() view returns (string)',
+  'function name() view returns (string)',
+];
+
+let provider: ethers.JsonRpcProvider | null = null;
+
+function getProvider(): ethers.JsonRpcProvider {
+  if (!provider) {
+    provider = new ethers.JsonRpcProvider(KASPLEX_EVM_RPC, {
+      chainId: KASPLEX_CHAIN_ID,
+      name: 'kasplex-l2',
+    });
+  }
+  return provider;
+}
+
+function getPaymasterPrivateKey(): string | null {
+  return process.env.PAYMASTER_PRIVATE_KEY || null;
+}
+
+export function isPaymasterConfigured(): boolean {
+  return !!getPaymasterPrivateKey();
+}
+
+export function getPaymasterWalletAddress(): string | null {
+  const privateKey = getPaymasterPrivateKey();
+  if (!privateKey) return null;
+  
+  try {
+    const wallet = new ethers.Wallet(privateKey);
+    return wallet.address;
+  } catch (error) {
+    console.error('Invalid paymaster private key:', error);
+    return null;
+  }
+}
+
+export interface TransferResult {
+  success: boolean;
+  txHash?: string;
+  error?: string;
+  gasUsed?: string;
+  blockNumber?: number;
+}
+
+export async function transferERC20(
+  tokenContract: string,
+  toAddress: string,
+  amount: string,
+  decimals: number = 18
+): Promise<TransferResult> {
+  const privateKey = getPaymasterPrivateKey();
+  
+  if (!privateKey) {
+    return {
+      success: false,
+      error: 'Paymaster private key not configured. Set PAYMASTER_PRIVATE_KEY environment secret.',
+    };
+  }
+
+  try {
+    const rpcProvider = getProvider();
+    const wallet = new ethers.Wallet(privateKey, rpcProvider);
+    
+    const contract = new ethers.Contract(tokenContract, ERC20_ABI, wallet);
+    
+    const amountBigInt = BigInt(amount);
+    
+    console.log(`Initiating ERC-20 transfer:`);
+    console.log(`  Token: ${tokenContract}`);
+    console.log(`  To: ${toAddress}`);
+    console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
+    console.log(`  From: ${wallet.address}`);
+    
+    const tx = await contract.transfer(toAddress, amountBigInt);
+    console.log(`Transaction submitted: ${tx.hash}`);
+    
+    const receipt = await tx.wait();
+    
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+    console.log(`Gas used: ${receipt.gasUsed.toString()}`);
+    
+    return {
+      success: true,
+      txHash: tx.hash,
+      gasUsed: receipt.gasUsed.toString(),
+      blockNumber: receipt.blockNumber,
+    };
+  } catch (error: any) {
+    console.error('ERC-20 transfer failed:', error);
+    
+    let errorMessage = 'Transaction failed';
+    if (error.code === 'INSUFFICIENT_FUNDS') {
+      errorMessage = 'Insufficient gas funds in paymaster wallet';
+    } else if (error.code === 'CALL_EXCEPTION') {
+      errorMessage = 'Contract call failed - check token balance and allowance';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+export async function estimateTransferGas(
+  tokenContract: string,
+  toAddress: string,
+  amount: string
+): Promise<string | null> {
+  const privateKey = getPaymasterPrivateKey();
+  
+  if (!privateKey) {
+    return null;
+  }
+
+  try {
+    const rpcProvider = getProvider();
+    const wallet = new ethers.Wallet(privateKey, rpcProvider);
+    const contract = new ethers.Contract(tokenContract, ERC20_ABI, wallet);
+    
+    const gasEstimate = await contract.transfer.estimateGas(toAddress, BigInt(amount));
+    return gasEstimate.toString();
+  } catch (error) {
+    console.error('Gas estimation failed:', error);
+    return null;
+  }
+}
+
+export async function getNativeBalance(walletAddress: string): Promise<string | null> {
+  try {
+    const rpcProvider = getProvider();
+    const balance = await rpcProvider.getBalance(walletAddress);
+    return balance.toString();
+  } catch (error) {
+    console.error('Error fetching native balance:', error);
+    return null;
+  }
+}
 
 export interface TokenBalance {
   balance: string;
