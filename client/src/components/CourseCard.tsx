@@ -3,36 +3,53 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Clock, Users, Star, BookOpen } from 'lucide-react';
+import type { Course as APICourse } from '@shared/schema';
 
-export interface Course {
+export interface CourseDisplay {
   id: string;
   title: string;
   description: string;
-  instructor: string;
-  duration: string;
-  students: number;
-  rating: number;
-  price: number;
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  shortDescription?: string | null;
+  thumbnail?: string | null;
   category: string;
+  difficulty: string;
+  duration?: number | null;
+  enrollmentCount: number;
+  rating?: string | null;
+  bmtReward: number;
   progress?: number;
-  thumbnail?: string;
 }
 
 interface CourseCardProps {
-  course: Course;
+  course: CourseDisplay;
   enrolled?: boolean;
   onEnroll?: (courseId: string) => void;
   onContinue?: (courseId: string) => void;
 }
 
-const difficultyColors = {
-  Beginner: 'bg-kaspa-green/20 text-kaspa-green border-kaspa-green/30',
-  Intermediate: 'bg-bmt-orange/20 text-bmt-orange border-bmt-orange/30',
-  Advanced: 'bg-destructive/20 text-destructive border-destructive/30',
+const difficultyColors: Record<string, string> = {
+  beginner: 'bg-kaspa-green/20 text-kaspa-green border-kaspa-green/30',
+  intermediate: 'bg-bmt-orange/20 text-bmt-orange border-bmt-orange/30',
+  advanced: 'bg-destructive/20 text-destructive border-destructive/30',
 };
 
+function formatDuration(minutes: number | null | undefined): string {
+  if (!minutes) return 'Self-paced';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 export default function CourseCard({ course, enrolled, onEnroll, onContinue }: CourseCardProps) {
+  const difficulty = course.difficulty.toLowerCase();
+  const difficultyClass = difficultyColors[difficulty] || difficultyColors.beginner;
+
   return (
     <Card 
       className="bg-card border-border hover:border-kaspa-cyan/50 transition-all group overflow-visible"
@@ -47,13 +64,13 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
           </div>
         )}
         <Badge 
-          className={`absolute top-3 right-3 ${difficultyColors[course.difficulty]}`}
+          className={`absolute top-3 right-3 ${difficultyClass}`}
           data-testid={`badge-difficulty-${course.id}`}
         >
-          {course.difficulty}
+          {capitalizeFirst(course.difficulty)}
         </Badge>
         <Badge className="absolute top-3 left-3 bg-background/80 backdrop-blur text-foreground">
-          {course.category}
+          {capitalizeFirst(course.category)}
         </Badge>
       </div>
 
@@ -61,21 +78,25 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
         <h3 className="font-heading font-semibold text-lg text-white mb-2 line-clamp-2 group-hover:text-kaspa-cyan transition-colors" data-testid={`text-course-title-${course.id}`}>
           {course.title}
         </h3>
-        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{course.description}</p>
+        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+          {course.shortDescription || course.description}
+        </p>
 
         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
           <span className="flex items-center gap-1">
             <Clock className="w-4 h-4" />
-            {course.duration}
+            {formatDuration(course.duration)}
           </span>
           <span className="flex items-center gap-1">
             <Users className="w-4 h-4" />
-            {course.students.toLocaleString()}
+            {course.enrollmentCount.toLocaleString()}
           </span>
-          <span className="flex items-center gap-1 text-bmt-orange">
-            <Star className="w-4 h-4 fill-current" />
-            {course.rating.toFixed(1)}
-          </span>
+          {course.rating && (
+            <span className="flex items-center gap-1 text-bmt-orange">
+              <Star className="w-4 h-4 fill-current" />
+              {parseFloat(course.rating).toFixed(1)}
+            </span>
+          )}
         </div>
 
         {enrolled && course.progress !== undefined && (
@@ -87,15 +108,11 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
             <Progress value={course.progress} className="h-2" />
           </div>
         )}
-
-        <p className="text-sm text-muted-foreground">
-          By <span className="text-white">{course.instructor}</span>
-        </p>
       </CardContent>
 
       <CardFooter className="p-4 pt-0 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <span className="font-heading font-bold text-lg text-bmt-orange">{course.price}</span>
+          <span className="font-heading font-bold text-lg text-bmt-orange">{course.bmtReward.toLocaleString()}</span>
           <span className="text-sm text-muted-foreground">$BMT</span>
         </div>
         {enrolled ? (

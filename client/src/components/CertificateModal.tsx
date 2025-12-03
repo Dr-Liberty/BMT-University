@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Download, Share2, ExternalLink, Award } from 'lucide-react';
-import bmtLogo from '@assets/BMT_Meme_1_1764741215718.jpg';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 
 export interface Certificate {
   id: string;

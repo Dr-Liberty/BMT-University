@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ExternalLink, CheckCircle2, Clock, Target, Loader2, Settings } from 'lucide-react';
 import { Link } from 'wouter';
 import type { AboutPage, RoadmapItem } from '@shared/schema';
-import bmtMeme1 from '@assets/BMT_Meme_1_1764741215718.jpg';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 import bmtMeme2 from '@assets/photo_2025-12-02_21-30-02_1764741237227.jpg';
 import bmtMeme3 from '@assets/photo_2025-12-02_21-30-25_1764741237226.jpg';
 import Footer from '@/components/Footer';
@@ -147,7 +147,7 @@ export default function About() {
               <Card className="overflow-hidden border-kaspa-cyan/30 hover:border-kaspa-cyan transition-colors">
                 <CardContent className="p-0">
                   <img 
-                    src={bmtMeme1} 
+                    src={bmtLogo} 
                     alt="BMT Logo" 
                     className="w-full h-40 object-cover"
                     data-testid="img-bmt-meme-2"
