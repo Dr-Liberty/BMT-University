@@ -1,10 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { updateAboutPageSchema, insertCourseSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema } from "@shared/schema";
+import { updateAboutPageSchema, insertCourseSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
+import { getKRC20Balance, getKRC20TokenInfo, formatTokenAmount } from "./kasplex";
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
 async function authMiddleware(req: any, res: any, next: any) {
@@ -692,6 +693,303 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching activity:", error);
       res.status(500).json({ error: "Failed to fetch activity" });
+    }
+  });
+
+  // ============ PAYMASTER WALLET (Admin) ============
+  
+  // Admin middleware - check if user has admin role
+  async function adminMiddleware(req: any, res: any, next: any) {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const session = await storage.getAuthSession(token);
+    if (!session || new Date() > session.expiresAt) {
+      return res.status(401).json({ error: 'Session expired' });
+    }
+    
+    const user = await storage.getUser(session.userId);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    req.user = user;
+    next();
+  }
+
+  // Get paymaster configuration
+  app.get("/api/admin/paymaster", adminMiddleware, async (req: any, res) => {
+    try {
+      const config = await storage.getPaymasterConfig();
+      
+      if (!config) {
+        return res.json({ configured: false });
+      }
+      
+      // Fetch live balance from Kasplex API
+      let liveBalance = null;
+      let formattedBalance = null;
+      
+      try {
+        const balanceData = await getKRC20Balance(config.walletAddress, config.tokenTicker);
+        if (balanceData) {
+          liveBalance = balanceData.balance;
+          formattedBalance = formatTokenAmount(balanceData.balance, config.tokenDecimals);
+          
+          // Update cached balance
+          await storage.updatePaymasterBalance(config.id, balanceData.balance);
+        }
+      } catch (e) {
+        console.error('Error fetching live balance:', e);
+      }
+      
+      res.json({
+        configured: true,
+        ...config,
+        liveBalance,
+        formattedBalance,
+      });
+    } catch (error) {
+      console.error("Error fetching paymaster config:", error);
+      res.status(500).json({ error: "Failed to fetch paymaster configuration" });
+    }
+  });
+
+  // Create or update paymaster configuration
+  app.post("/api/admin/paymaster", adminMiddleware, async (req: any, res) => {
+    try {
+      const existingConfig = await storage.getPaymasterConfig();
+      
+      if (existingConfig) {
+        // Update existing config
+        const result = updatePaymasterConfigSchema.safeParse(req.body);
+        if (!result.success) {
+          return res.status(400).json({ error: fromError(result.error).message });
+        }
+        
+        const updated = await storage.updatePaymasterConfig(existingConfig.id, result.data);
+        res.json(updated);
+      } else {
+        // Create new config
+        const result = insertPaymasterConfigSchema.safeParse(req.body);
+        if (!result.success) {
+          return res.status(400).json({ error: fromError(result.error).message });
+        }
+        
+        const created = await storage.createPaymasterConfig(result.data);
+        res.status(201).json(created);
+      }
+    } catch (error) {
+      console.error("Error saving paymaster config:", error);
+      res.status(500).json({ error: "Failed to save paymaster configuration" });
+    }
+  });
+
+  // Refresh paymaster balance
+  app.post("/api/admin/paymaster/refresh-balance", adminMiddleware, async (req: any, res) => {
+    try {
+      const config = await storage.getPaymasterConfig();
+      
+      if (!config) {
+        return res.status(404).json({ error: "Paymaster not configured" });
+      }
+      
+      const balanceData = await getKRC20Balance(config.walletAddress, config.tokenTicker);
+      
+      if (!balanceData) {
+        return res.status(500).json({ error: "Failed to fetch balance from Kasplex" });
+      }
+      
+      const updated = await storage.updatePaymasterBalance(config.id, balanceData.balance);
+      
+      res.json({
+        ...updated,
+        liveBalance: balanceData.balance,
+        formattedBalance: formatTokenAmount(balanceData.balance, config.tokenDecimals),
+      });
+    } catch (error) {
+      console.error("Error refreshing balance:", error);
+      res.status(500).json({ error: "Failed to refresh balance" });
+    }
+  });
+
+  // Get pending payouts
+  app.get("/api/admin/payouts", adminMiddleware, async (req: any, res) => {
+    try {
+      const payouts = await storage.getAllPayoutTransactions();
+      
+      // Enrich with user info
+      const enrichedPayouts = await Promise.all(
+        payouts.map(async (payout) => {
+          const user = await storage.getUser(payout.userId);
+          return {
+            ...payout,
+            userWallet: user?.walletAddress,
+            userDisplayName: user?.displayName,
+          };
+        })
+      );
+      
+      res.json(enrichedPayouts);
+    } catch (error) {
+      console.error("Error fetching payouts:", error);
+      res.status(500).json({ error: "Failed to fetch payouts" });
+    }
+  });
+
+  // Get pending payout summary
+  app.get("/api/admin/payouts/summary", adminMiddleware, async (req: any, res) => {
+    try {
+      const pendingPayouts = await storage.getPendingPayoutTransactions();
+      const allPayouts = await storage.getAllPayoutTransactions();
+      const config = await storage.getPaymasterConfig();
+      
+      const pendingTotal = pendingPayouts.reduce((sum, p) => sum + p.amount, 0);
+      const completedPayouts = allPayouts.filter(p => p.status === 'completed');
+      const completedTotal = completedPayouts.reduce((sum, p) => sum + p.amount, 0);
+      
+      res.json({
+        pendingCount: pendingPayouts.length,
+        pendingTotal,
+        completedCount: completedPayouts.length,
+        completedTotal,
+        tokenTicker: config?.tokenTicker || 'BMT',
+        tokenDecimals: config?.tokenDecimals || 8,
+      });
+    } catch (error) {
+      console.error("Error fetching payout summary:", error);
+      res.status(500).json({ error: "Failed to fetch payout summary" });
+    }
+  });
+
+  // Mark payout as completed (manual processing)
+  app.post("/api/admin/payouts/:payoutId/complete", adminMiddleware, async (req: any, res) => {
+    try {
+      const { txHash } = req.body;
+      
+      const payout = await storage.getPayoutTransaction(req.params.payoutId);
+      if (!payout) {
+        return res.status(404).json({ error: "Payout not found" });
+      }
+      
+      if (payout.status !== 'pending') {
+        return res.status(400).json({ error: "Payout already processed" });
+      }
+      
+      const updated = await storage.updatePayoutTransaction(payout.id, {
+        status: 'completed',
+        txHash: txHash || null,
+        processedAt: new Date(),
+      });
+      
+      // Also update the associated reward
+      if (payout.rewardId) {
+        await storage.updateReward(payout.rewardId, {
+          status: 'confirmed',
+          txHash: txHash || null,
+          processedAt: new Date(),
+        });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error completing payout:", error);
+      res.status(500).json({ error: "Failed to complete payout" });
+    }
+  });
+
+  // Update course reward amount (admin)
+  app.patch("/api/admin/courses/:courseId/reward", adminMiddleware, async (req: any, res) => {
+    try {
+      const { bmtReward } = req.body;
+      
+      if (typeof bmtReward !== 'number' || bmtReward < 0) {
+        return res.status(400).json({ error: "Invalid reward amount" });
+      }
+      
+      const course = await storage.getCourse(req.params.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      
+      const updated = await storage.updateCourse(req.params.courseId, { bmtReward });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating course reward:", error);
+      res.status(500).json({ error: "Failed to update course reward" });
+    }
+  });
+
+  // Get all courses with reward info (admin)
+  app.get("/api/admin/courses", adminMiddleware, async (req: any, res) => {
+    try {
+      const courses = await storage.getAllCourses({});
+      const allRewards = await storage.getAllRewards();
+      
+      const coursesWithStats = courses.map(course => {
+        const courseRewards = allRewards.filter(r => r.courseId === course.id);
+        const paidRewards = courseRewards.filter(r => r.status === 'confirmed');
+        const pendingRewards = courseRewards.filter(r => r.status === 'pending');
+        
+        return {
+          ...course,
+          totalPaid: paidRewards.reduce((sum, r) => sum + r.amount, 0),
+          pendingAmount: pendingRewards.reduce((sum, r) => sum + r.amount, 0),
+          rewardsClaimed: paidRewards.length,
+          rewardsPending: pendingRewards.length,
+        };
+      });
+      
+      res.json(coursesWithStats);
+    } catch (error) {
+      console.error("Error fetching admin courses:", error);
+      res.status(500).json({ error: "Failed to fetch courses" });
+    }
+  });
+
+  // Get token info from Kasplex
+  app.get("/api/token/:ticker", async (req, res) => {
+    try {
+      const tokenInfo = await getKRC20TokenInfo(req.params.ticker);
+      
+      if (!tokenInfo) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+      
+      res.json(tokenInfo);
+    } catch (error) {
+      console.error("Error fetching token info:", error);
+      res.status(500).json({ error: "Failed to fetch token info" });
+    }
+  });
+
+  // Public endpoint to check paymaster status (for users to know if payouts are available)
+  app.get("/api/paymaster/status", async (req, res) => {
+    try {
+      const config = await storage.getPaymasterConfig();
+      
+      if (!config || !config.isActive) {
+        return res.json({
+          active: false,
+          message: "Reward payouts are temporarily unavailable",
+        });
+      }
+      
+      res.json({
+        active: true,
+        tokenTicker: config.tokenTicker,
+        minPayout: config.minPayoutAmount,
+        autoPayoutEnabled: config.autoPayoutEnabled,
+      });
+    } catch (error) {
+      console.error("Error checking paymaster status:", error);
+      res.status(500).json({ error: "Failed to check paymaster status" });
     }
   });
 
