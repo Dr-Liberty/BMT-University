@@ -356,19 +356,34 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   if (!isConnected) {
     return (
       <>
-        <Button
-          onClick={() => setShowWalletSelector(true)}
-          disabled={isLoading}
-          className="bg-transparent border border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase tracking-wide gap-2"
-          data-testid="button-connect-wallet"
-        >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Wallet className="w-4 h-4" />
-          )}
-          {isLoading ? 'Connecting...' : 'Connect Wallet'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowWalletSelector(true)}
+            disabled={isLoading}
+            className="bg-transparent border border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase tracking-wide gap-2"
+            data-testid="button-connect-wallet"
+          >
+            {isLoading && connectingWallet ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Wallet className="w-4 h-4" />
+            )}
+            {isLoading && connectingWallet ? 'Connecting...' : 'Connect Wallet'}
+          </Button>
+          
+          <Button
+            onClick={handleDemoConnect}
+            disabled={isLoading}
+            variant="outline"
+            className="border-bmt-orange/50 text-bmt-orange hover:bg-bmt-orange/10 font-heading uppercase tracking-wide gap-2"
+            data-testid="button-demo-mode"
+          >
+            {isLoading && !connectingWallet ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : null}
+            Demo Mode
+          </Button>
+        </div>
 
         <Dialog open={showWalletSelector} onOpenChange={setShowWalletSelector}>
           <DialogContent className="sm:max-w-md" data-testid="modal-wallet-selector">
