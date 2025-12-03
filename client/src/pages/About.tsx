@@ -116,21 +116,33 @@ export default function About() {
               ))}
 
               <div className="flex flex-wrap gap-4 mt-8">
-                <Button
-                  className="bg-bmt-orange text-background hover:bg-bmt-orange/90 gap-2"
-                  data-testid="button-buy-bmt"
+                <a 
+                  href="https://lfg.kaspa.com/app/token/0x35fBa50F52e2AA305438134c646957066608d976"
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
-                  Buy $BMT
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 gap-2"
-                  data-testid="button-view-kasplex"
+                  <Button
+                    className="bg-bmt-orange text-background hover:bg-bmt-orange/90 gap-2"
+                    data-testid="button-buy-bmt"
+                  >
+                    Buy $BMT
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </a>
+                <a 
+                  href="https://explorer.kasplex.org/token/0x35fBa50F52e2AA305438134c646957066608d976"
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
-                  View on Kasplex
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
+                  <Button
+                    variant="outline"
+                    className="border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 gap-2"
+                    data-testid="button-view-kasplex"
+                  >
+                    View on Kasplex
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </a>
               </div>
             </div>
 
