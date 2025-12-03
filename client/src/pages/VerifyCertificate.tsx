@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Award, CheckCircle2, XCircle, ExternalLink, Loader2, Copy, ArrowLeft } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
-import bmtLogo from '@assets/unnamed_1764742650253.jpg';
+import bmtLogo from '@assets/unnamed_1764742301087.jpg';
 
 interface VerifiedCertificate {
   valid: boolean;

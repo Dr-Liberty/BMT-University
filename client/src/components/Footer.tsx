@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import bmtLogo from '@assets/unnamed_1764742650253.jpg';
+import bmtLogo from '@assets/unnamed_1764742301087.jpg';
 import { SiX, SiTelegram, SiDiscord } from 'react-icons/si';
 
 export default function Footer() {
