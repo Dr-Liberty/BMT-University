@@ -331,3 +331,45 @@ export const authNonces = pgTable("auth_nonces", {
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ============ ANTI-ABUSE: DEVICE FINGERPRINTS ============
+export const deviceFingerprints = pgTable("device_fingerprints", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fingerprintHash: varchar("fingerprint_hash", { length: 64 }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  screenResolution: varchar("screen_resolution", { length: 20 }),
+  timezone: varchar("timezone", { length: 50 }),
+  language: varchar("language", { length: 10 }),
+  platform: varchar("platform", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+});
+
+export type DeviceFingerprint = typeof deviceFingerprints.$inferSelect;
+
+// ============ ANTI-ABUSE: SUSPICIOUS ACTIVITY LOG ============
+export const suspiciousActivity = pgTable("suspicious_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  walletAddress: varchar("wallet_address", { length: 100 }),
+  fingerprintHash: varchar("fingerprint_hash", { length: 64 }),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  activityType: varchar("activity_type", { length: 50 }).notNull(),
+  description: text("description"),
+  severity: varchar("severity", { length: 20 }).notNull().default('low'),
+  courseId: varchar("course_id").references(() => courses.id),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type SuspiciousActivity = typeof suspiciousActivity.$inferSelect;
+
+export const insertSuspiciousActivitySchema = createInsertSchema(suspiciousActivity).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSuspiciousActivity = z.infer<typeof insertSuspiciousActivitySchema>;

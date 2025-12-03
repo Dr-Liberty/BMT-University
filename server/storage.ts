@@ -11,10 +11,12 @@ import {
   type Reward, type InsertReward,
   type PaymasterConfig, type InsertPaymasterConfig, type UpdatePaymasterConfig,
   type PayoutTransaction, type InsertPayoutTransaction,
+  type DeviceFingerprint, type SuspiciousActivity, type InsertSuspiciousActivity,
   users, courses, lessons, quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
   aboutPages, authNonces, authSessions,
   paymasterConfig, payoutTransactions,
+  deviceFingerprints, suspiciousActivity,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -93,6 +95,31 @@ export interface IStorage {
   releasePayoutFromProcessing(id: string): Promise<boolean>;
   completePayoutFromProcessing(id: string, txHash: string, blockNumber?: number): Promise<PayoutTransaction | null>;
   failPayoutFromProcessing(id: string, errorMessage: string): Promise<PayoutTransaction | null>;
+  
+  // Anti-abuse methods
+  hasUserCompletedCourseReward(userId: string, courseId: string): Promise<boolean>;
+  getRewardByUserAndCourse(userId: string, courseId: string): Promise<Reward | undefined>;
+  
+  // Device fingerprint methods
+  saveDeviceFingerprint(data: {
+    fingerprintHash: string;
+    userId: string;
+    walletAddress: string;
+    ipAddress?: string;
+    userAgent?: string;
+    screenResolution?: string;
+    timezone?: string;
+    language?: string;
+    platform?: string;
+  }): Promise<DeviceFingerprint>;
+  getDeviceFingerprintsByHash(fingerprintHash: string): Promise<DeviceFingerprint[]>;
+  getDeviceFingerprintsByIp(ipAddress: string): Promise<DeviceFingerprint[]>;
+  getDeviceFingerprintsByUser(userId: string): Promise<DeviceFingerprint[]>;
+  
+  // Suspicious activity methods
+  logSuspiciousActivity(activity: InsertSuspiciousActivity): Promise<SuspiciousActivity>;
+  getSuspiciousActivityByUser(userId: string): Promise<SuspiciousActivity[]>;
+  getSuspiciousActivityByFingerprint(fingerprintHash: string): Promise<SuspiciousActivity[]>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -675,6 +702,95 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return payout || null;
+  }
+
+  // Anti-abuse: Check if user already received reward for a course
+  async hasUserCompletedCourseReward(userId: string, courseId: string): Promise<boolean> {
+    const [existingReward] = await db.select().from(rewards)
+      .where(and(
+        eq(rewards.userId, userId),
+        eq(rewards.courseId, courseId),
+        eq(rewards.type, 'course_completion')
+      ));
+    return !!existingReward;
+  }
+
+  async getRewardByUserAndCourse(userId: string, courseId: string): Promise<Reward | undefined> {
+    const [reward] = await db.select().from(rewards)
+      .where(and(
+        eq(rewards.userId, userId),
+        eq(rewards.courseId, courseId)
+      ));
+    return reward || undefined;
+  }
+
+  // Device fingerprint methods
+  async saveDeviceFingerprint(data: {
+    fingerprintHash: string;
+    userId: string;
+    walletAddress: string;
+    ipAddress?: string;
+    userAgent?: string;
+    screenResolution?: string;
+    timezone?: string;
+    language?: string;
+    platform?: string;
+  }): Promise<DeviceFingerprint> {
+    // Check if this fingerprint already exists for this user
+    const [existing] = await db.select().from(deviceFingerprints)
+      .where(and(
+        eq(deviceFingerprints.fingerprintHash, data.fingerprintHash),
+        eq(deviceFingerprints.userId, data.userId)
+      ));
+    
+    if (existing) {
+      // Update last seen
+      const [updated] = await db.update(deviceFingerprints)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(deviceFingerprints.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    // Create new fingerprint record
+    const [fingerprint] = await db.insert(deviceFingerprints).values(data).returning();
+    return fingerprint;
+  }
+
+  async getDeviceFingerprintsByHash(fingerprintHash: string): Promise<DeviceFingerprint[]> {
+    return db.select().from(deviceFingerprints)
+      .where(eq(deviceFingerprints.fingerprintHash, fingerprintHash))
+      .orderBy(desc(deviceFingerprints.createdAt));
+  }
+
+  async getDeviceFingerprintsByIp(ipAddress: string): Promise<DeviceFingerprint[]> {
+    return db.select().from(deviceFingerprints)
+      .where(eq(deviceFingerprints.ipAddress, ipAddress))
+      .orderBy(desc(deviceFingerprints.createdAt));
+  }
+
+  async getDeviceFingerprintsByUser(userId: string): Promise<DeviceFingerprint[]> {
+    return db.select().from(deviceFingerprints)
+      .where(eq(deviceFingerprints.userId, userId))
+      .orderBy(desc(deviceFingerprints.createdAt));
+  }
+
+  // Suspicious activity methods
+  async logSuspiciousActivity(activity: InsertSuspiciousActivity): Promise<SuspiciousActivity> {
+    const [newActivity] = await db.insert(suspiciousActivity).values(activity).returning();
+    return newActivity;
+  }
+
+  async getSuspiciousActivityByUser(userId: string): Promise<SuspiciousActivity[]> {
+    return db.select().from(suspiciousActivity)
+      .where(eq(suspiciousActivity.userId, userId))
+      .orderBy(desc(suspiciousActivity.createdAt));
+  }
+
+  async getSuspiciousActivityByFingerprint(fingerprintHash: string): Promise<SuspiciousActivity[]> {
+    return db.select().from(suspiciousActivity)
+      .where(eq(suspiciousActivity.fingerprintHash, fingerprintHash))
+      .orderBy(desc(suspiciousActivity.createdAt));
   }
 }
 
