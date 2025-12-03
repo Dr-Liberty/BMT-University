@@ -356,9 +356,10 @@ export async function registerRoutes(
         passed,
       });
       
-      // If passed, create reward and certificate
+      // If passed, create reward, certificate, and payout transaction
       let reward = null;
       let certificate = null;
+      let payoutTransaction = null;
       
       if (passed) {
         const course = await storage.getCourse(quiz.courseId);
@@ -368,6 +369,15 @@ export async function registerRoutes(
             courseId: course.id,
             amount: course.bmtReward,
             type: 'course_completion',
+          });
+          
+          // Create payout transaction for admin processing
+          payoutTransaction = await storage.createPayoutTransaction({
+            rewardId: reward.id,
+            userId: req.user.id,
+            recipientAddress: req.user.walletAddress || '',
+            amount: course.bmtReward,
+            tokenTicker: 'BMT',
           });
           
           certificate = await storage.createCertificate({
@@ -397,6 +407,7 @@ export async function registerRoutes(
         feedback,
         reward,
         certificate,
+        payoutTransaction,
       });
     } catch (error) {
       console.error("Error submitting quiz:", error);

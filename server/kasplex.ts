@@ -222,7 +222,7 @@ export async function getTransactionReceipt(txHash: string): Promise<any | null>
 export function formatTokenAmount(amount: string, decimals: number): string {
   try {
     const amountNum = BigInt(amount);
-    const divisor = BigInt(10 ** decimals);
+    const divisor = BigInt(10) ** BigInt(decimals);
     const integerPart = amountNum / divisor;
     const fractionalPart = amountNum % divisor;
 
@@ -246,7 +246,8 @@ export function parseTokenAmount(amount: string, decimals: number): string {
     const paddedFractional = fractionalPart.padEnd(decimals, '0').slice(0, decimals);
     const fullAmount = integerPart + paddedFractional;
 
-    return BigInt(fullAmount).toString();
+    const parsed = BigInt(fullAmount);
+    return parsed.toString();
   } catch {
     return '0';
   }
