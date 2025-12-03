@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import WalletConnectButton from './WalletConnectButton';
-import bmtLogo from '@assets/unnamed_1764742301087.jpg';
+import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
 
 const navLinks = [
   { href: '/', label: 'Home' },

@@ -159,7 +159,7 @@ export async function registerRoutes(
       const lessons = await storage.getLessonsByCourse(req.params.id);
       const quiz = await storage.getQuizByCourse(req.params.id);
       
-      let quizWithQuestions = quiz;
+      let quizWithQuestions: (typeof quiz & { questions?: unknown[] }) | null = quiz;
       if (quiz) {
         const questions = await storage.getQuizQuestions(quiz.id);
         const safeQuestions = questions.map(q => ({

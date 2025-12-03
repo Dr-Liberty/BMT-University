@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, Users, DollarSign, BarChart3, Coins } from 'lucide-react';
-import bmtLogo from '@assets/unnamed_1764742301087.jpg';
+import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
 
 interface TokenStat {
   label: string;

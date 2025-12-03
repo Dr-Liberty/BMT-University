@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Wallet, BookOpen, Award, Coins } from 'lucide-react';
-import bmtLogo from '@assets/unnamed_1764742301087.jpg';
+import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
 
 interface HeroStat {
   icon: typeof Wallet;
