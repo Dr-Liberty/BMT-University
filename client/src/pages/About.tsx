@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, CheckCircle2, Clock, Target, Loader2 } from 'lucide-react';
+import { ExternalLink, CheckCircle2, Clock, Target, Loader2, Settings } from 'lucide-react';
+import { Link } from 'wouter';
 import type { AboutPage, RoadmapItem } from '@shared/schema';
 import bmtMeme1 from '@assets/BMT_Meme_1_1764741215718.jpg';
 import bmtMeme2 from '@assets/photo_2025-12-02_21-30-02_1764741237227.jpg';
@@ -87,9 +88,21 @@ export default function About() {
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h1 className="font-heading font-bold text-4xl text-white mb-6">
-                About <span className="text-bmt-orange">$BMT</span>
-              </h1>
+              <div className="flex items-center justify-between gap-4 mb-6">
+                <h1 className="font-heading font-bold text-4xl text-white">
+                  About <span className="text-bmt-orange">$BMT</span>
+                </h1>
+                <Link href="/admin/about">
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="text-muted-foreground hover:text-kaspa-cyan"
+                    data-testid="button-edit-about"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </Button>
+                </Link>
+              </div>
               
               {paragraphs.map((paragraph, index) => (
                 <p 
