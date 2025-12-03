@@ -2,7 +2,6 @@ import BlockdagBackground from '@/components/BlockdagBackground';
 import HeroSection from '@/components/HeroSection';
 import TokenStats from '@/components/TokenStats';
 import FeaturedCourses from '@/components/FeaturedCourses';
-import AboutBMT from '@/components/AboutBMT';
 import Footer from '@/components/Footer';
 
 export default function Home() {
@@ -12,7 +11,6 @@ export default function Home() {
       <HeroSection />
       <TokenStats />
       <FeaturedCourses />
-      <AboutBMT />
       <Footer />
     </div>
   );

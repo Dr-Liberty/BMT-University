@@ -5,6 +5,7 @@ import bmtLogo from '@assets/BMT_Meme_1_1764741215718.jpg';
 const navLinks = [
   { href: '/', label: 'Home' },
   { href: '/courses', label: 'Courses' },
+  { href: '/about', label: 'About' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/analytics', label: 'Analytics' },
 ];
