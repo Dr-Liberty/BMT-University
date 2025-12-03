@@ -158,7 +158,18 @@ export async function registerRoutes(
       }
       const lessons = await storage.getLessonsByCourse(req.params.id);
       const quiz = await storage.getQuizByCourse(req.params.id);
-      res.json({ ...course, lessons, quiz });
+      
+      let quizWithQuestions = quiz;
+      if (quiz) {
+        const questions = await storage.getQuizQuestions(quiz.id);
+        const safeQuestions = questions.map(q => ({
+          ...q,
+          options: q.options.map(o => ({ id: o.id, text: o.text })),
+        }));
+        quizWithQuestions = { ...quiz, questions: safeQuestions };
+      }
+      
+      res.json({ ...course, lessons, quiz: quizWithQuestions });
     } catch (error) {
       console.error("Error fetching course:", error);
       res.status(500).json({ error: "Failed to fetch course" });
