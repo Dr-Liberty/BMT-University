@@ -2,63 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE */
+/* BMT UNIVERSITY - Dark Theme Only */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
-  --background: 0 0% 100%;
-  --foreground: 220 15% 12%;
-  --border: 220 8% 92%;
-  --card: 0 0% 98%;
-  --card-foreground: 220 15% 12%;
-  --card-border: 220 8% 94%;
-  --sidebar: 220 10% 96%;
-  --sidebar-foreground: 220 15% 12%;
-  --sidebar-border: 220 8% 92%;
-  --sidebar-primary: 190 100% 45%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 12% 93%;
-  --sidebar-accent-foreground: 220 15% 12%;
-  --sidebar-ring: 190 100% 45%;
-  --popover: 220 10% 94%;
-  --popover-foreground: 220 15% 12%;
-  --popover-border: 220 8% 90%;
-  --primary: 190 100% 45%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 220 15% 91%;
-  --secondary-foreground: 220 15% 12%;
-  --muted: 220 12% 93%;
-  --muted-foreground: 220 12% 35%;
-  --accent: 220 18% 94%;
-  --accent-foreground: 220 15% 12%;
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+  --background: 222 47% 5%;
+  --foreground: 0 0% 100%;
+  --border: 220 20% 14%;
+  --card: 222 35% 7%;
+  --card-foreground: 0 0% 100%;
+  --card-border: 220 20% 12%;
+  --sidebar: 222 40% 8%;
+  --sidebar-foreground: 0 0% 100%;
+  --sidebar-border: 220 20% 12%;
+  --sidebar-primary: 190 100% 50%;
+  --sidebar-primary-foreground: 222 47% 5%;
+  --sidebar-accent: 222 30% 12%;
+  --sidebar-accent-foreground: 190 100% 70%;
+  --sidebar-ring: 190 100% 50%;
+  --popover: 222 35% 10%;
+  --popover-foreground: 0 0% 100%;
+  --popover-border: 220 20% 14%;
+  --primary: 190 100% 50%;
+  --primary-foreground: 222 47% 5%;
+  --secondary: 36 100% 65%;
+  --secondary-foreground: 222 47% 5%;
+  --muted: 222 20% 14%;
+  --muted-foreground: 220 15% 65%;
+  --accent: 152 100% 50%;
+  --accent-foreground: 222 47% 5%;
   --destructive: 0 84% 48%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 15% 75%;
-  --ring: 190 100% 45%;
-  --chart-1: 190 100% 35%;
-  --chart-2: 140 85% 32%;
-  --chart-3: 30 95% 50%;
-  --chart-4: 270 75% 45%;
-  --chart-5: 320 80% 42%;
-  --font-sans: Open Sans, sans-serif;
+  --input: 220 20% 18%;
+  --ring: 190 100% 50%;
+  --chart-1: 190 100% 50%;
+  --chart-2: 152 100% 50%;
+  --chart-3: 36 100% 65%;
+  --chart-4: 270 70% 65%;
+  --chart-5: 320 75% 60%;
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+  --font-mono: 'JetBrains Mono', monospace;
   --radius: .5rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(220 8% 50% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(220 8% 50% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(220 8% 50% / 0.00), 0px 1px 2px -1px hsl(220 8% 50% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(220 8% 50% / 0.00), 0px 1px 2px -1px hsl(220 8% 50% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(220 8% 50% / 0.00), 0px 2px 4px -1px hsl(220 8% 50% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(220 8% 50% / 0.00), 0px 4px 6px -1px hsl(220 8% 50% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(220 8% 50% / 0.00), 0px 8px 10px -1px hsl(220 8% 50% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(220 8% 50% / 0.00);
+  --shadow-2xs: 0px 2px 0px 0px hsl(220 15% 8% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(220 15% 8% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 1px 2px -1px hsl(220 15% 8% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 1px 2px -1px hsl(220 15% 8% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 2px 4px -1px hsl(220 15% 8% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 4px 6px -1px hsl(220 15% 8% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 8px 10px -1px hsl(220 15% 8% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(220 15% 8% / 0.00);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
-/* Fallback for older browsers */
+  /* BMT Custom Colors */
+  --kaspa-cyan: 190 100% 50%;
+  --bmt-orange: 36 100% 65%;
+  --kaspa-green: 152 100% 50%;
+
+  /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
@@ -87,44 +93,45 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* Dark mode is the default and only mode for BMT University */
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 220 15% 8%;
-  --foreground: 220 8% 95%;
-  --border: 220 10% 18%;
-  --card: 220 15% 10%;
-  --card-foreground: 220 8% 95%;
-  --card-border: 220 12% 14%;
-  --sidebar: 220 15% 12%;
-  --sidebar-foreground: 220 8% 95%;
-  --sidebar-border: 220 12% 16%;
+  --background: 222 47% 5%;
+  --foreground: 0 0% 100%;
+  --border: 220 20% 14%;
+  --card: 222 35% 7%;
+  --card-foreground: 0 0% 100%;
+  --card-border: 220 20% 12%;
+  --sidebar: 222 40% 8%;
+  --sidebar-foreground: 0 0% 100%;
+  --sidebar-border: 220 20% 12%;
   --sidebar-primary: 190 100% 50%;
-  --sidebar-primary-foreground: 220 15% 8%;
-  --sidebar-accent: 220 15% 15%;
+  --sidebar-primary-foreground: 222 47% 5%;
+  --sidebar-accent: 222 30% 12%;
   --sidebar-accent-foreground: 190 100% 70%;
   --sidebar-ring: 190 100% 50%;
-  --popover: 220 15% 14%;
-  --popover-foreground: 220 8% 95%;
-  --popover-border: 220 12% 18%;
-  --primary: 190 100% 45%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 220 15% 18%;
-  --secondary-foreground: 220 8% 95%;
-  --muted: 220 12% 16%;
-  --muted-foreground: 220 10% 65%;
-  --accent: 220 18% 17%;
-  --accent-foreground: 220 8% 95%;
-  --destructive: 0 84% 42%;
+  --popover: 222 35% 10%;
+  --popover-foreground: 0 0% 100%;
+  --popover-border: 220 20% 14%;
+  --primary: 190 100% 50%;
+  --primary-foreground: 222 47% 5%;
+  --secondary: 36 100% 65%;
+  --secondary-foreground: 222 47% 5%;
+  --muted: 222 20% 14%;
+  --muted-foreground: 220 15% 65%;
+  --accent: 152 100% 50%;
+  --accent-foreground: 222 47% 5%;
+  --destructive: 0 84% 48%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 15% 25%;
+  --input: 220 20% 18%;
   --ring: 190 100% 50%;
-  --chart-1: 190 100% 65%;
-  --chart-2: 140 75% 60%;
-  --chart-3: 30 100% 65%;
+  --chart-1: 190 100% 50%;
+  --chart-2: 152 100% 50%;
+  --chart-3: 36 100% 65%;
   --chart-4: 270 70% 65%;
   --chart-5: 320 75% 60%;
   --shadow-2xs: 0px 2px 0px 0px hsl(220 15% 8% / 0.00);
@@ -136,7 +143,12 @@
   --shadow-xl: 0px 2px 0px 0px hsl(220 15% 8% / 0.00), 0px 8px 10px -1px hsl(220 15% 8% / 0.00);
   --shadow-2xl: 0px 2px 0px 0px hsl(220 15% 8% / 0.00);
 
-/* Fallback for older browsers */
+  /* BMT Custom Colors */
+  --kaspa-cyan: 190 100% 50%;
+  --bmt-orange: 36 100% 65%;
+  --kaspa-green: 152 100% 50%;
+
+  /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
