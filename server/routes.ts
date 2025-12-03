@@ -5,7 +5,16 @@ import { updateAboutPageSchema, insertCourseSchema, insertLessonSchema, insertQu
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
-import { getERC20Balance, getERC20TokenInfo, formatTokenAmount } from "./kasplex";
+import { 
+  getERC20Balance, 
+  getERC20TokenInfo, 
+  formatTokenAmount, 
+  transferERC20, 
+  isPaymasterConfigured, 
+  getPaymasterWalletAddress,
+  getNativeBalance,
+  parseTokenAmount
+} from "./kasplex";
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
 async function authMiddleware(req: any, res: any, next: any) {
@@ -765,6 +774,8 @@ export async function registerRoutes(
       
       res.json({
         configured: true,
+        privateKeyConfigured: isPaymasterConfigured(),
+        derivedWalletAddress: getPaymasterWalletAddress(),
         ...config,
         liveBalance,
         formattedBalance,
@@ -886,7 +897,95 @@ export async function registerRoutes(
     }
   });
 
-  // Mark payout as completed (manual processing)
+  // Process payout with real blockchain transaction
+  app.post("/api/admin/payouts/:payoutId/process", adminMiddleware, async (req: any, res) => {
+    try {
+      const payout = await storage.getPayoutTransaction(req.params.payoutId);
+      if (!payout) {
+        return res.status(404).json({ error: "Payout not found" });
+      }
+      
+      if (payout.status !== 'pending') {
+        return res.status(400).json({ error: "Payout already processed" });
+      }
+      
+      if (!payout.recipientAddress) {
+        return res.status(400).json({ error: "Recipient address not set" });
+      }
+      
+      // Check if paymaster is configured
+      if (!isPaymasterConfigured()) {
+        return res.status(400).json({ error: "Paymaster wallet not configured. Set PAYMASTER_PRIVATE_KEY secret." });
+      }
+      
+      // Get token contract from config
+      const config = await storage.getPaymasterConfig();
+      if (!config?.tokenContractAddress) {
+        return res.status(400).json({ error: "Token contract address not configured" });
+      }
+      
+      // Mark as processing
+      await storage.updatePayoutTransaction(payout.id, { status: 'processing' });
+      
+      // Get token decimals for amount conversion
+      const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
+      const decimals = tokenInfo?.decimals || 18;
+      
+      // Convert the reward amount to token units (with decimals)
+      const amountInWei = parseTokenAmount(payout.amount.toString(), decimals);
+      
+      // Execute the real blockchain transfer
+      const result = await transferERC20(
+        config.tokenContractAddress,
+        payout.recipientAddress,
+        amountInWei,
+        decimals
+      );
+      
+      if (result.success && result.txHash) {
+        // Update payout with real transaction hash
+        const updated = await storage.updatePayoutTransaction(payout.id, {
+          status: 'completed',
+          txHash: result.txHash,
+          processedAt: new Date(),
+        });
+        
+        // Also update the associated reward
+        if (payout.rewardId) {
+          await storage.updateReward(payout.rewardId, {
+            status: 'confirmed',
+            txHash: result.txHash,
+            processedAt: new Date(),
+          });
+        }
+        
+        res.json({
+          ...updated,
+          blockchainResult: {
+            txHash: result.txHash,
+            gasUsed: result.gasUsed,
+            blockNumber: result.blockNumber,
+          }
+        });
+      } else {
+        // Mark as failed
+        await storage.updatePayoutTransaction(payout.id, {
+          status: 'failed',
+          errorMessage: result.error,
+        });
+        
+        res.status(500).json({ 
+          error: "Blockchain transaction failed", 
+          details: result.error 
+        });
+      }
+    } catch (error) {
+      console.error("Error processing payout:", error);
+      res.status(500).json({ error: "Failed to process payout" });
+    }
+  });
+
+  // Mark payout as completed manually (for external processing)
   app.post("/api/admin/payouts/:payoutId/complete", adminMiddleware, async (req: any, res) => {
     try {
       const { txHash } = req.body;
@@ -896,8 +995,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Payout not found" });
       }
       
-      if (payout.status !== 'pending') {
-        return res.status(400).json({ error: "Payout already processed" });
+      if (payout.status !== 'pending' && payout.status !== 'processing') {
+        return res.status(400).json({ error: "Payout already completed or failed" });
       }
       
       const updated = await storage.updatePayoutTransaction(payout.id, {

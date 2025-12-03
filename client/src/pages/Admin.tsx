@@ -10,11 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface PaymasterConfig {
   configured: boolean;
+  privateKeyConfigured?: boolean;
+  derivedWalletAddress?: string;
   id?: string;
   walletAddress?: string;
   tokenContractAddress?: string;
@@ -140,6 +142,28 @@ export default function Admin() {
     },
   });
 
+  const processPayoutMutation = useMutation({
+    mutationFn: async (payoutId: string) => {
+      return apiRequest('POST', `/api/admin/payouts/${payoutId}/process`);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/payouts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/payouts/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/paymaster'] });
+      toast({ 
+        title: "Payout processed on blockchain", 
+        description: `Transaction confirmed: ${data.blockchainResult?.txHash?.slice(0, 16)}...`
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Blockchain transaction failed", 
+        description: error.message || "Failed to process payout", 
+        variant: "destructive" 
+      });
+    },
+  });
+
   const completePayoutMutation = useMutation({
     mutationFn: async ({ payoutId, txHash }: { payoutId: string; txHash?: string }) => {
       return apiRequest('POST', `/api/admin/payouts/${payoutId}/complete`, { txHash });
@@ -147,7 +171,7 @@ export default function Admin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/payouts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/payouts/summary'] });
-      toast({ title: "Payout completed", description: "Payout marked as completed." });
+      toast({ title: "Payout completed", description: "Payout marked as completed manually." });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to complete payout", variant: "destructive" });
@@ -162,6 +186,8 @@ export default function Admin() {
     switch (status) {
       case 'pending':
         return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
+      case 'processing':
+        return <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />Processing</Badge>;
       case 'completed':
         return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
       case 'failed':
@@ -349,6 +375,27 @@ export default function Admin() {
               <CardContent>
                 {paymasterConfig?.configured ? (
                   <div className="space-y-4">
+                    {/* Private Key Status */}
+                    <div className={`flex items-center gap-2 p-3 rounded-lg ${paymasterConfig.privateKeyConfigured ? 'bg-green-500/10 border border-green-500/30' : 'bg-yellow-500/10 border border-yellow-500/30'}`}>
+                      {paymasterConfig.privateKeyConfigured ? (
+                        <>
+                          <Key className="w-5 h-5 text-green-600" />
+                          <div>
+                            <p className="text-sm font-medium text-green-600">Private Key Configured</p>
+                            <p className="text-xs text-muted-foreground">Ready for automated payouts</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                          <div>
+                            <p className="text-sm font-medium text-yellow-600">Private Key Not Set</p>
+                            <p className="text-xs text-muted-foreground">Set PAYMASTER_PRIVATE_KEY secret for automated payouts</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
                     <div className="text-center p-6 bg-muted/50 rounded-lg">
                       <p className="text-4xl font-bold text-primary" data-testid="text-balance">
                         {paymasterConfig.formattedBalance || '0'}
@@ -542,15 +589,51 @@ export default function Admin() {
                         </TableCell>
                         <TableCell>
                           {payout.status === 'pending' && (
-                            <Button
-                              size="sm"
-                              onClick={() => completePayoutMutation.mutate({ payoutId: payout.id })}
-                              disabled={completePayoutMutation.isPending}
-                              data-testid={`button-complete-${payout.id}`}
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Complete
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => processPayoutMutation.mutate(payout.id)}
+                                disabled={processPayoutMutation.isPending}
+                                data-testid={`button-process-${payout.id}`}
+                              >
+                                <ArrowUpRight className="w-4 h-4 mr-1" />
+                                Process
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => completePayoutMutation.mutate({ payoutId: payout.id })}
+                                disabled={completePayoutMutation.isPending}
+                                data-testid={`button-complete-${payout.id}`}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Manual
+                              </Button>
+                            </div>
+                          )}
+                          {payout.status === 'processing' && (
+                            <Badge variant="outline" className="animate-pulse">
+                              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                              Broadcasting...
+                            </Badge>
+                          )}
+                          {payout.status === 'failed' && (
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => processPayoutMutation.mutate(payout.id)}
+                                disabled={processPayoutMutation.isPending}
+                                data-testid={`button-retry-${payout.id}`}
+                              >
+                                Retry
+                              </Button>
+                              {payout.errorMessage && (
+                                <p className="text-xs text-red-500 max-w-[200px] truncate" title={payout.errorMessage}>
+                                  {payout.errorMessage}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
