@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import Footer from '@/components/Footer';
 import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import type { Course } from '@shared/schema';
 
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
@@ -30,13 +33,43 @@ function mapCourseToDisplay(course: Course): CourseDisplay {
 }
 
 export default function Courses() {
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [difficulty, setDifficulty] = useState('All');
   const [filter, setFilter] = useState('all');
+  const { toast } = useToast();
 
   const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
     queryKey: ['/api/courses'],
+  });
+
+  const enrollMutation = useMutation({
+    mutationFn: async (courseId: string) => {
+      return apiRequest('POST', `/api/courses/${courseId}/enroll`);
+    },
+    onSuccess: (_, courseId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      toast({
+        title: 'Enrolled successfully!',
+        description: 'You can now start learning.',
+      });
+      setLocation(`/course/${courseId}`);
+    },
+    onError: (error: any) => {
+      if (error?.message?.includes('Already enrolled')) {
+        toast({
+          title: 'Already enrolled',
+          description: 'You are already enrolled in this course.',
+        });
+      } else {
+        toast({
+          title: 'Enrollment failed',
+          description: 'Please connect your wallet to enroll.',
+          variant: 'destructive',
+        });
+      }
+    },
   });
 
   const filteredCourses = courses.filter((course) => {
@@ -48,7 +81,7 @@ export default function Courses() {
   });
 
   const handleEnroll = (courseId: string) => {
-    console.log('Enrolling in course:', courseId);
+    enrollMutation.mutate(courseId);
   };
 
   return (

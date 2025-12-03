@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import CourseCard, { CourseDisplay } from './CourseCard';
 import { Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import type { Course } from '@shared/schema';
 
 function mapCourseToDisplay(course: Course): CourseDisplay {
@@ -26,14 +28,44 @@ function mapCourseToDisplay(course: Course): CourseDisplay {
 type FilterType = 'featured' | 'trending' | 'new';
 
 export default function FeaturedCourses() {
+  const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<FilterType>('featured');
+  const { toast } = useToast();
 
   const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
     queryKey: ['/api/courses'],
   });
 
+  const enrollMutation = useMutation({
+    mutationFn: async (courseId: string) => {
+      return apiRequest('POST', `/api/courses/${courseId}/enroll`);
+    },
+    onSuccess: (_, courseId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      toast({
+        title: 'Enrolled successfully!',
+        description: 'You can now start learning.',
+      });
+      setLocation(`/course/${courseId}`);
+    },
+    onError: (error: any) => {
+      if (error?.message?.includes('Already enrolled')) {
+        toast({
+          title: 'Already enrolled',
+          description: 'You are already enrolled in this course.',
+        });
+      } else {
+        toast({
+          title: 'Connect your wallet',
+          description: 'Please connect your wallet to enroll in courses.',
+          variant: 'destructive',
+        });
+      }
+    },
+  });
+
   const handleEnroll = (courseId: string) => {
-    console.log('Enrolling in course:', courseId);
+    enrollMutation.mutate(courseId);
   };
 
   const displayCourses = courses.slice(0, 6);

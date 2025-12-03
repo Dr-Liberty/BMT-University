@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Wallet, ChevronDown, LogOut, Copy, ExternalLink } from 'lucide-react';
+import { Wallet, ChevronDown, LogOut, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,6 +8,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useToast } from '@/hooks/use-toast';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
+import type { User } from '@shared/schema';
 
 interface WalletConnectButtonProps {
   onConnect?: () => void;
@@ -16,38 +20,151 @@ interface WalletConnectButtonProps {
 
 export default function WalletConnectButton({ onConnect, onDisconnect }: WalletConnectButtonProps) {
   const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
+  const [fullAddress, setFullAddress] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-  const handleConnect = () => {
-    // todo: remove mock functionality
-    const mockAddress = '0x' + Math.random().toString(16).slice(2, 10) + '...' + Math.random().toString(16).slice(2, 6);
-    setAddress(mockAddress);
-    setIsConnected(true);
-    onConnect?.();
-    console.log('Wallet connected:', mockAddress);
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      fetchCurrentUser();
+    }
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+      });
+      if (res.ok) {
+        const user: User = await res.json();
+        if (user.walletAddress) {
+          setFullAddress(user.walletAddress);
+          setIsConnected(true);
+        }
+      } else {
+        clearAuthToken();
+      }
+    } catch {
+      clearAuthToken();
+    }
   };
 
-  const handleDisconnect = () => {
-    setIsConnected(false);
-    setAddress('');
-    onDisconnect?.();
-    console.log('Wallet disconnected');
+  const formatAddress = (addr: string): string => {
+    if (addr.length <= 12) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const displayAddress = formatAddress(fullAddress);
+
+  const handleConnect = async () => {
+    setIsLoading(true);
+    
+    try {
+      const walletAddress = `kaspa:${generateMockAddress()}`;
+      
+      const nonceRes = await fetch('/api/auth/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress }),
+      });
+      
+      if (!nonceRes.ok) {
+        throw new Error('Failed to get authentication nonce');
+      }
+      
+      const { nonce } = await nonceRes.json();
+      
+      const signature = `mock_signature_${nonce.slice(0, 16)}`;
+      
+      const verifyRes = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress, signature }),
+      });
+      
+      if (!verifyRes.ok) {
+        throw new Error('Failed to verify wallet signature');
+      }
+      
+      const { token, user } = await verifyRes.json();
+      
+      setAuthToken(token);
+      setFullAddress(walletAddress);
+      setIsConnected(true);
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+      
+      toast({
+        title: 'Wallet Connected',
+        description: 'You can now enroll in courses and earn $BMT rewards.',
+      });
+      
+      onConnect?.();
+    } catch (error) {
+      console.error('Wallet connect error:', error);
+      toast({
+        title: 'Connection Failed',
+        description: 'Failed to connect wallet. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      const token = getAuthToken();
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+    } finally {
+      clearAuthToken();
+      setIsConnected(false);
+      setFullAddress('');
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+      
+      toast({
+        title: 'Wallet Disconnected',
+        description: 'You have been logged out.',
+      });
+      
+      onDisconnect?.();
+    }
   };
 
   const handleCopyAddress = () => {
-    navigator.clipboard.writeText(address);
-    console.log('Address copied');
+    navigator.clipboard.writeText(fullAddress);
+    toast({
+      title: 'Address Copied',
+      description: 'Wallet address copied to clipboard.',
+    });
   };
 
   if (!isConnected) {
     return (
       <Button
         onClick={handleConnect}
+        disabled={isLoading}
         className="bg-transparent border border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase tracking-wide gap-2"
         data-testid="button-connect-wallet"
       >
-        <Wallet className="w-4 h-4" />
-        Connect Wallet
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Wallet className="w-4 h-4" />
+        )}
+        {isLoading ? 'Connecting...' : 'Connect Wallet'}
       </Button>
     );
   }
@@ -61,7 +178,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
           data-testid="button-wallet-menu"
         >
           <div className="w-2 h-2 rounded-full bg-kaspa-green animate-pulse" />
-          {address}
+          {displayAddress}
           <ChevronDown className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -82,4 +199,13 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function generateMockAddress(): string {
+  const chars = '0123456789abcdef';
+  let result = '';
+  for (let i = 0; i < 40; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
 }
