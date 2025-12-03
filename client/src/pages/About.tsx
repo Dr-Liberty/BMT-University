@@ -9,6 +9,7 @@ import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
 import bmtMeme2 from '@assets/photo_2025-12-02_21-30-02_1764741237227.jpg';
 import bmtMeme3 from '@assets/photo_2025-12-02_21-30-25_1764741237226.jpg';
 import Footer from '@/components/Footer';
+import TokenStats from '@/components/TokenStats';
 
 function RoadmapCard({ item }: { item: RoadmapItem }) {
   const statusConfig = {
@@ -168,6 +169,8 @@ export default function About() {
           </div>
         </div>
       </section>
+
+      <TokenStats />
 
       <section className="py-16 px-4 sm:px-6" data-testid="section-roadmap">
         <div className="max-w-7xl mx-auto">
