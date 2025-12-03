@@ -258,9 +258,50 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - [x] Course leaderboard
 - [x] Live activity feed
 
-### Phase 5: Production Hardening (Next)
+### Phase 5: Paymaster Wallet System ✅
+- [x] Paymaster wallet configuration (EVM wallet address)
+- [x] $BMT token contract integration (ERC-20 on Kasplex L2)
+- [x] Admin interface for wallet management
+- [x] Payout transaction tracking (pending/processing/completed)
+- [x] Course reward amount adjustment
+- [x] Quiz completion auto-creates payout transactions
+
+### Phase 6: Production Hardening (Next)
 - [ ] Replace MemStorage with PostgreSQL persistence
 - [ ] Integrate real Kasplex SDK for wallet signatures
-- [ ] Implement actual blockchain transactions for rewards
+- [ ] Implement actual blockchain transactions for payouts
 - [ ] Add multi-organization support for subscription model
 - [ ] Igra network integration
+
+## Paymaster Wallet System
+
+The paymaster system manages $BMT token distribution to students who complete courses.
+
+### Architecture
+- **Kasplex Layer 2**: EVM-compatible chain (Chain ID: 202555)
+- **RPC Endpoint**: https://evmrpc.kasplex.org
+- **$BMT Token**: ERC-20 token contract for rewards
+
+### Database Tables
+- `paymasterConfig`: Stores wallet address, private key (encrypted), and token contract address
+- `payoutTransactions`: Tracks all reward payouts with status (pending, processing, completed, failed)
+
+### Admin API Endpoints
+- `GET /api/admin/paymaster/config` - Get current configuration
+- `POST /api/admin/paymaster/config` - Set wallet and token addresses
+- `GET /api/admin/paymaster/balance` - Check $BMT balance via RPC
+- `GET /api/admin/payouts` - List all payout transactions
+- `POST /api/admin/payouts/:id/process` - Process pending payout
+- `PUT /api/admin/courses/:id/reward` - Adjust course reward amount
+
+### Reward Flow
+1. Student completes quiz with passing score
+2. System creates reward record with $BMT amount
+3. Payout transaction created with status "pending"
+4. Admin processes payout (future: automated via private key)
+5. Transaction hash recorded, status updated to "completed"
+
+### Key Files
+- `server/kasplex.ts` - EVM RPC integration for balance checking
+- `client/src/pages/Admin.tsx` - Paymaster management UI
+- `shared/schema.ts` - paymasterConfig and payoutTransactions tables
