@@ -26,7 +26,7 @@ export default function TokenStats() {
           <img
             src={bmtLogo}
             alt="$BMT"
-            className="w-12 h-12 rounded-full border-2 border-bmt-orange"
+            className="w-12 h-12 object-contain"
           />
           <div>
             <h2 className="font-heading font-bold text-2xl text-white">About $BMT</h2>

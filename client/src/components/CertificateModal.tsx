@@ -37,7 +37,7 @@ export default function CertificateModal({ certificate, open, onClose }: Certifi
               <img
                 src={bmtLogo}
                 alt="BMT University"
-                className="w-20 h-20 rounded-full border-4 border-kaspa-cyan"
+                className="w-24 h-24 object-contain"
               />
             </div>
 

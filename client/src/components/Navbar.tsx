@@ -21,7 +21,7 @@ export default function Navbar() {
             <img 
               src={bmtLogo} 
               alt="BMT University" 
-              className="w-10 h-10 rounded-full object-cover border-2 border-kaspa-cyan"
+              className="w-10 h-10 object-contain"
             />
             <span className="font-heading font-bold text-xl text-white hidden sm:block">
               BMT <span className="text-kaspa-cyan">University</span>

@@ -12,7 +12,7 @@ export default function Footer() {
               <img
                 src={bmtLogo}
                 alt="BMT University"
-                className="w-12 h-12 rounded-full border-2 border-kaspa-cyan"
+                className="w-12 h-12 object-contain"
               />
               <span className="font-heading font-bold text-xl text-white">
                 BMT <span className="text-kaspa-cyan">University</span>
