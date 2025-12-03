@@ -43,7 +43,7 @@ export default function BlockdagBackground() {
     };
 
     const draw = () => {
-      ctx.fillStyle = 'rgba(10, 14, 26, 0.05)';
+      ctx.fillStyle = 'rgba(10, 14, 26, 0.08)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       particles.forEach((particle, i) => {
@@ -60,10 +60,10 @@ export default function BlockdagBackground() {
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < connectionDistance) {
-            const opacity = (1 - distance / connectionDistance) * 0.25;
+            const opacity = (1 - distance / connectionDistance) * 0.4;
             ctx.beginPath();
             ctx.strokeStyle = `rgba(0, 212, 255, ${opacity})`;
-            ctx.lineWidth = 0.5;
+            ctx.lineWidth = 1;
             ctx.moveTo(particle.x, particle.y);
             ctx.lineTo(other.x, other.y);
             ctx.stroke();
@@ -71,8 +71,8 @@ export default function BlockdagBackground() {
         });
 
         ctx.beginPath();
-        ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 212, 255, 0.4)';
+        ctx.arc(particle.x, particle.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 212, 255, 0.6)';
         ctx.fill();
       });
 

@@ -8,8 +8,10 @@ export default function Home() {
     <div className="min-h-screen" data-testid="page-home">
       <BlockdagBackground />
       <HeroSection />
-      <FeaturedCourses />
-      <Footer />
+      <div className="bg-background relative z-10">
+        <FeaturedCourses />
+        <Footer />
+      </div>
     </div>
   );
 }
