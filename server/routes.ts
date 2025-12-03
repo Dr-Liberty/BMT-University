@@ -13,7 +13,8 @@ import {
   isPaymasterConfigured, 
   getPaymasterWalletAddress,
   getNativeBalance,
-  parseTokenAmount
+  parseTokenAmount,
+  getNetworkInfo
 } from "./kasplex";
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
@@ -775,6 +776,7 @@ export async function registerRoutes(
       res.json({
         configured: true,
         privateKeyConfigured: isPaymasterConfigured(),
+        network: getNetworkInfo(),
         ...config,
         liveBalance,
         formattedBalance,

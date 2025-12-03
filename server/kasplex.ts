@@ -1,7 +1,35 @@
 import { ethers } from 'ethers';
 
-const KASPLEX_EVM_RPC = 'https://evmrpc.kasplex.org';
-const KASPLEX_CHAIN_ID = 202555;
+// Network configuration - toggle between testnet and mainnet
+const USE_TESTNET = process.env.KASPLEX_NETWORK !== 'mainnet';
+
+const NETWORKS = {
+  testnet: {
+    rpc: 'https://rpc.kasplextest.xyz',
+    chainId: 167012,
+    name: 'kasplex-testnet',
+    explorer: 'https://frontend.kasplextest.xyz',
+  },
+  mainnet: {
+    rpc: 'https://evmrpc.kasplex.org',
+    chainId: 202555,
+    name: 'kasplex-l2',
+    explorer: 'https://explorer.kasplex.org',
+  },
+};
+
+const ACTIVE_NETWORK = USE_TESTNET ? NETWORKS.testnet : NETWORKS.mainnet;
+const KASPLEX_EVM_RPC = ACTIVE_NETWORK.rpc;
+const KASPLEX_CHAIN_ID = ACTIVE_NETWORK.chainId;
+
+export function getNetworkInfo() {
+  return {
+    network: USE_TESTNET ? 'testnet' : 'mainnet',
+    chainId: ACTIVE_NETWORK.chainId,
+    rpc: ACTIVE_NETWORK.rpc,
+    explorer: ACTIVE_NETWORK.explorer,
+  };
+}
 
 const ERC20_BALANCE_OF_ABI = '0x70a08231';
 const ERC20_DECIMALS_ABI = '0x313ce567';
@@ -24,7 +52,7 @@ function getProvider(): ethers.JsonRpcProvider {
   if (!provider) {
     provider = new ethers.JsonRpcProvider(KASPLEX_EVM_RPC, {
       chainId: KASPLEX_CHAIN_ID,
-      name: 'kasplex-l2',
+      name: ACTIVE_NETWORK.name,
     });
   }
   return provider;

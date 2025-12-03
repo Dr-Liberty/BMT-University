@@ -374,6 +374,19 @@ export default function Admin() {
               <CardContent>
                 {paymasterConfig?.configured ? (
                   <div className="space-y-4">
+                    {/* Network Status */}
+                    {paymasterConfig.network && (
+                      <div className={`flex items-center justify-between gap-2 p-3 rounded-lg ${paymasterConfig.network.network === 'testnet' ? 'bg-orange-500/10 border border-orange-500/30' : 'bg-blue-500/10 border border-blue-500/30'}`}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${paymasterConfig.network.network === 'testnet' ? 'bg-orange-500' : 'bg-blue-500'}`} />
+                          <span className={`text-sm font-medium ${paymasterConfig.network.network === 'testnet' ? 'text-orange-600' : 'text-blue-600'}`}>
+                            Kasplex {paymasterConfig.network.network === 'testnet' ? 'Testnet' : 'Mainnet'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">Chain ID: {paymasterConfig.network.chainId}</span>
+                      </div>
+                    )}
+
                     {/* Private Key Status */}
                     <div className={`flex items-center gap-2 p-3 rounded-lg ${paymasterConfig.privateKeyConfigured ? 'bg-green-500/10 border border-green-500/30' : 'bg-yellow-500/10 border border-yellow-500/30'}`}>
                       {paymasterConfig.privateKeyConfigured ? (
