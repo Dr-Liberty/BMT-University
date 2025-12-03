@@ -9,9 +9,12 @@ import {
   type QuizAttempt, type InsertQuizAttempt,
   type Certificate, type InsertCertificate,
   type Reward, type InsertReward,
+  type PaymasterConfig, type InsertPaymasterConfig, type UpdatePaymasterConfig,
+  type PayoutTransaction, type InsertPayoutTransaction,
   users, courses, lessons, quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
   aboutPages, authNonces, authSessions,
+  paymasterConfig, payoutTransactions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -74,6 +77,18 @@ export interface IStorage {
   createAuthSession(userId: string, token: string, walletAddress: string, expiresAt: Date): Promise<void>;
   getAuthSession(token: string): Promise<{ userId: string; walletAddress: string; expiresAt: Date } | undefined>;
   deleteAuthSession(token: string): Promise<void>;
+  
+  getPaymasterConfig(): Promise<PaymasterConfig | undefined>;
+  createPaymasterConfig(config: InsertPaymasterConfig): Promise<PaymasterConfig>;
+  updatePaymasterConfig(id: string, data: UpdatePaymasterConfig): Promise<PaymasterConfig | undefined>;
+  updatePaymasterBalance(id: string, balance: string): Promise<PaymasterConfig | undefined>;
+  
+  getPayoutTransaction(id: string): Promise<PayoutTransaction | undefined>;
+  getPayoutTransactionsByUser(userId: string): Promise<PayoutTransaction[]>;
+  getPendingPayoutTransactions(): Promise<PayoutTransaction[]>;
+  getAllPayoutTransactions(): Promise<PayoutTransaction[]>;
+  createPayoutTransaction(payout: InsertPayoutTransaction): Promise<PayoutTransaction>;
+  updatePayoutTransaction(id: string, data: Partial<PayoutTransaction>): Promise<PayoutTransaction | undefined>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -543,6 +558,66 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAuthSession(token: string): Promise<void> {
     await db.delete(authSessions).where(eq(authSessions.token, token));
+  }
+
+  async getPaymasterConfig(): Promise<PaymasterConfig | undefined> {
+    const [config] = await db.select().from(paymasterConfig).where(eq(paymasterConfig.isActive, true)).limit(1);
+    return config || undefined;
+  }
+
+  async createPaymasterConfig(config: InsertPaymasterConfig): Promise<PaymasterConfig> {
+    const [newConfig] = await db.insert(paymasterConfig).values(config).returning();
+    return newConfig;
+  }
+
+  async updatePaymasterConfig(id: string, data: UpdatePaymasterConfig): Promise<PaymasterConfig | undefined> {
+    const [config] = await db.update(paymasterConfig)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(paymasterConfig.id, id))
+      .returning();
+    return config || undefined;
+  }
+
+  async updatePaymasterBalance(id: string, balance: string): Promise<PaymasterConfig | undefined> {
+    const [config] = await db.update(paymasterConfig)
+      .set({ cachedBalance: balance, lastBalanceCheck: new Date(), updatedAt: new Date() })
+      .where(eq(paymasterConfig.id, id))
+      .returning();
+    return config || undefined;
+  }
+
+  async getPayoutTransaction(id: string): Promise<PayoutTransaction | undefined> {
+    const [payout] = await db.select().from(payoutTransactions).where(eq(payoutTransactions.id, id));
+    return payout || undefined;
+  }
+
+  async getPayoutTransactionsByUser(userId: string): Promise<PayoutTransaction[]> {
+    return db.select().from(payoutTransactions)
+      .where(eq(payoutTransactions.userId, userId))
+      .orderBy(desc(payoutTransactions.createdAt));
+  }
+
+  async getPendingPayoutTransactions(): Promise<PayoutTransaction[]> {
+    return db.select().from(payoutTransactions)
+      .where(eq(payoutTransactions.status, 'pending'))
+      .orderBy(asc(payoutTransactions.createdAt));
+  }
+
+  async getAllPayoutTransactions(): Promise<PayoutTransaction[]> {
+    return db.select().from(payoutTransactions).orderBy(desc(payoutTransactions.createdAt));
+  }
+
+  async createPayoutTransaction(payout: InsertPayoutTransaction): Promise<PayoutTransaction> {
+    const [newPayout] = await db.insert(payoutTransactions).values(payout).returning();
+    return newPayout;
+  }
+
+  async updatePayoutTransaction(id: string, data: Partial<PayoutTransaction>): Promise<PayoutTransaction | undefined> {
+    const [payout] = await db.update(payoutTransactions)
+      .set(data)
+      .where(eq(payoutTransactions.id, id))
+      .returning();
+    return payout || undefined;
   }
 }
 

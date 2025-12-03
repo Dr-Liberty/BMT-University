@@ -243,6 +243,69 @@ export type InsertAboutPage = z.infer<typeof insertAboutPageSchema>;
 export type UpdateAboutPage = z.infer<typeof updateAboutPageSchema>;
 export type AboutPage = typeof aboutPages.$inferSelect;
 
+// ============ PAYMASTER WALLET CONFIG ============
+export const paymasterConfig = pgTable("paymaster_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
+  tokenTicker: varchar("token_ticker", { length: 20 }).notNull().default('BMT'),
+  tokenDecimals: integer("token_decimals").notNull().default(8),
+  isActive: boolean("is_active").notNull().default(true),
+  minPayoutAmount: integer("min_payout_amount").notNull().default(1),
+  autoPayoutEnabled: boolean("auto_payout_enabled").notNull().default(false),
+  lastBalanceCheck: timestamp("last_balance_check"),
+  cachedBalance: varchar("cached_balance", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPaymasterConfigSchema = createInsertSchema(paymasterConfig).omit({
+  id: true,
+  lastBalanceCheck: true,
+  cachedBalance: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updatePaymasterConfigSchema = z.object({
+  walletAddress: z.string().min(1).optional(),
+  tokenTicker: z.string().min(1).optional(),
+  tokenDecimals: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+  minPayoutAmount: z.number().int().min(1).optional(),
+  autoPayoutEnabled: z.boolean().optional(),
+});
+
+export type InsertPaymasterConfig = z.infer<typeof insertPaymasterConfigSchema>;
+export type UpdatePaymasterConfig = z.infer<typeof updatePaymasterConfigSchema>;
+export type PaymasterConfig = typeof paymasterConfig.$inferSelect;
+
+// ============ PAYOUT TRANSACTIONS ============
+export const payoutTransactions = pgTable("payout_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  rewardId: varchar("reward_id").references(() => rewards.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  recipientAddress: varchar("recipient_address", { length: 100 }).notNull(),
+  amount: integer("amount").notNull(),
+  tokenTicker: varchar("token_ticker", { length: 20 }).notNull().default('BMT'),
+  status: varchar("status", { length: 20 }).notNull().default('pending'),
+  txHash: varchar("tx_hash", { length: 100 }),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  processedAt: timestamp("processed_at"),
+});
+
+export const insertPayoutTransactionSchema = createInsertSchema(payoutTransactions).omit({
+  id: true,
+  status: true,
+  txHash: true,
+  errorMessage: true,
+  createdAt: true,
+  processedAt: true,
+});
+
+export type InsertPayoutTransaction = z.infer<typeof insertPayoutTransactionSchema>;
+export type PayoutTransaction = typeof payoutTransactions.$inferSelect;
+
 // ============ WALLET AUTH SESSIONS ============
 export const authSessions = pgTable("auth_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
