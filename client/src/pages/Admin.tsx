@@ -16,7 +16,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface PaymasterConfig {
   configured: boolean;
   privateKeyConfigured?: boolean;
-  derivedWalletAddress?: string;
   id?: string;
   walletAddress?: string;
   tokenContractAddress?: string;
@@ -593,7 +592,8 @@ export default function Admin() {
                               <Button
                                 size="sm"
                                 onClick={() => processPayoutMutation.mutate(payout.id)}
-                                disabled={processPayoutMutation.isPending}
+                                disabled={processPayoutMutation.isPending || !paymasterConfig?.privateKeyConfigured}
+                                title={!paymasterConfig?.privateKeyConfigured ? 'Set PAYMASTER_PRIVATE_KEY to enable' : 'Send tokens via blockchain'}
                                 data-testid={`button-process-${payout.id}`}
                               >
                                 <ArrowUpRight className="w-4 h-4 mr-1" />
@@ -623,7 +623,8 @@ export default function Admin() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => processPayoutMutation.mutate(payout.id)}
-                                disabled={processPayoutMutation.isPending}
+                                disabled={processPayoutMutation.isPending || !paymasterConfig?.privateKeyConfigured}
+                                title={!paymasterConfig?.privateKeyConfigured ? 'Set PAYMASTER_PRIVATE_KEY to enable' : 'Retry blockchain transaction'}
                                 data-testid={`button-retry-${payout.id}`}
                               >
                                 Retry

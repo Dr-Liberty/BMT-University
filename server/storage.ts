@@ -89,6 +89,10 @@ export interface IStorage {
   getAllPayoutTransactions(): Promise<PayoutTransaction[]>;
   createPayoutTransaction(payout: InsertPayoutTransaction): Promise<PayoutTransaction>;
   updatePayoutTransaction(id: string, data: Partial<PayoutTransaction>): Promise<PayoutTransaction | undefined>;
+  claimPayoutForProcessing(id: string): Promise<PayoutTransaction | null>;
+  releasePayoutFromProcessing(id: string): Promise<boolean>;
+  completePayoutFromProcessing(id: string, txHash: string, blockNumber?: number): Promise<PayoutTransaction | null>;
+  failPayoutFromProcessing(id: string, errorMessage: string): Promise<PayoutTransaction | null>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -618,6 +622,59 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payoutTransactions.id, id))
       .returning();
     return payout || undefined;
+  }
+
+  async claimPayoutForProcessing(id: string): Promise<PayoutTransaction | null> {
+    const [payout] = await db.update(payoutTransactions)
+      .set({ status: 'processing' })
+      .where(and(
+        eq(payoutTransactions.id, id),
+        eq(payoutTransactions.status, 'pending')
+      ))
+      .returning();
+    return payout || null;
+  }
+
+  async releasePayoutFromProcessing(id: string): Promise<boolean> {
+    const [payout] = await db.update(payoutTransactions)
+      .set({ status: 'pending' })
+      .where(and(
+        eq(payoutTransactions.id, id),
+        eq(payoutTransactions.status, 'processing')
+      ))
+      .returning();
+    return !!payout;
+  }
+
+  async completePayoutFromProcessing(id: string, txHash: string, blockNumber?: number): Promise<PayoutTransaction | null> {
+    const [payout] = await db.update(payoutTransactions)
+      .set({ 
+        status: 'completed',
+        txHash,
+        blockNumber: blockNumber || null,
+        processedAt: new Date(),
+      })
+      .where(and(
+        eq(payoutTransactions.id, id),
+        eq(payoutTransactions.status, 'processing')
+      ))
+      .returning();
+    return payout || null;
+  }
+
+  async failPayoutFromProcessing(id: string, errorMessage: string): Promise<PayoutTransaction | null> {
+    const [payout] = await db.update(payoutTransactions)
+      .set({ 
+        status: 'failed',
+        errorMessage,
+        processedAt: new Date(),
+      })
+      .where(and(
+        eq(payoutTransactions.id, id),
+        eq(payoutTransactions.status, 'processing')
+      ))
+      .returning();
+    return payout || null;
   }
 }
 

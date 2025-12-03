@@ -775,7 +775,6 @@ export async function registerRoutes(
       res.json({
         configured: true,
         privateKeyConfigured: isPaymasterConfigured(),
-        derivedWalletAddress: getPaymasterWalletAddress(),
         ...config,
         liveBalance,
         formattedBalance,
@@ -900,20 +899,7 @@ export async function registerRoutes(
   // Process payout with real blockchain transaction
   app.post("/api/admin/payouts/:payoutId/process", adminMiddleware, async (req: any, res) => {
     try {
-      const payout = await storage.getPayoutTransaction(req.params.payoutId);
-      if (!payout) {
-        return res.status(404).json({ error: "Payout not found" });
-      }
-      
-      if (payout.status !== 'pending') {
-        return res.status(400).json({ error: "Payout already processed" });
-      }
-      
-      if (!payout.recipientAddress) {
-        return res.status(400).json({ error: "Recipient address not set" });
-      }
-      
-      // Check if paymaster is configured
+      // Check if paymaster is configured first (before any DB operations)
       if (!isPaymasterConfigured()) {
         return res.status(400).json({ error: "Paymaster wallet not configured. Set PAYMASTER_PRIVATE_KEY secret." });
       }
@@ -924,8 +910,21 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Token contract address not configured" });
       }
       
-      // Mark as processing
-      await storage.updatePayoutTransaction(payout.id, { status: 'processing' });
+      // Atomically claim the payout for processing (prevents concurrent double-processing)
+      const payout = await storage.claimPayoutForProcessing(req.params.payoutId);
+      if (!payout) {
+        // Could be not found OR already processed/processing
+        const existing = await storage.getPayoutTransaction(req.params.payoutId);
+        if (!existing) {
+          return res.status(404).json({ error: "Payout not found" });
+        }
+        return res.status(400).json({ error: `Payout already ${existing.status}` });
+      }
+      
+      if (!payout.recipientAddress) {
+        await storage.releasePayoutFromProcessing(payout.id);
+        return res.status(400).json({ error: "Recipient address not set" });
+      }
       
       // Get token decimals for amount conversion
       const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
@@ -943,12 +942,17 @@ export async function registerRoutes(
       );
       
       if (result.success && result.txHash) {
-        // Update payout with real transaction hash
-        const updated = await storage.updatePayoutTransaction(payout.id, {
-          status: 'completed',
-          txHash: result.txHash,
-          processedAt: new Date(),
-        });
+        // Atomically complete the payout (only if still processing)
+        const updated = await storage.completePayoutFromProcessing(
+          payout.id, 
+          result.txHash, 
+          result.blockNumber
+        );
+        
+        if (!updated) {
+          console.error(`Failed to complete payout ${payout.id} - may have been modified concurrently`);
+          return res.status(409).json({ error: "Payout state changed unexpectedly" });
+        }
         
         // Also update the associated reward
         if (payout.rewardId) {
@@ -968,11 +972,8 @@ export async function registerRoutes(
           }
         });
       } else {
-        // Mark as failed
-        await storage.updatePayoutTransaction(payout.id, {
-          status: 'failed',
-          errorMessage: result.error,
-        });
+        // Atomically mark as failed (only if still processing)
+        const failed = await storage.failPayoutFromProcessing(payout.id, result.error || 'Unknown error');
         
         res.status(500).json({ 
           error: "Blockchain transaction failed", 
@@ -990,26 +991,38 @@ export async function registerRoutes(
     try {
       const { txHash } = req.body;
       
-      const payout = await storage.getPayoutTransaction(req.params.payoutId);
+      // First try to atomically claim the payout (pending → processing)
+      let payout = await storage.claimPayoutForProcessing(req.params.payoutId);
+      
       if (!payout) {
-        return res.status(404).json({ error: "Payout not found" });
+        // Check if already processing (concurrent request might have claimed it)
+        const existing = await storage.getPayoutTransaction(req.params.payoutId);
+        if (!existing) {
+          return res.status(404).json({ error: "Payout not found" });
+        }
+        if (existing.status === 'processing') {
+          // Another admin is processing, we can complete it
+          payout = existing;
+        } else {
+          return res.status(400).json({ error: `Payout already ${existing.status}` });
+        }
       }
       
-      if (payout.status !== 'pending' && payout.status !== 'processing') {
-        return res.status(400).json({ error: "Payout already completed or failed" });
-      }
+      // Now atomically complete (processing → completed)
+      const updated = await storage.completePayoutFromProcessing(
+        payout.id,
+        txHash || 'manual-completion'
+      );
       
-      const updated = await storage.updatePayoutTransaction(payout.id, {
-        status: 'completed',
-        txHash: txHash || null,
-        processedAt: new Date(),
-      });
+      if (!updated) {
+        return res.status(409).json({ error: "Payout state changed unexpectedly" });
+      }
       
       // Also update the associated reward
       if (payout.rewardId) {
         await storage.updateReward(payout.rewardId, {
           status: 'confirmed',
-          txHash: txHash || null,
+          txHash: txHash || 'manual-completion',
           processedAt: new Date(),
         });
       }
