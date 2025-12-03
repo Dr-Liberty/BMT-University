@@ -12,6 +12,7 @@ import Analytics from "@/pages/Analytics";
 import Quiz from "@/pages/Quiz";
 import About from "@/pages/About";
 import AboutEditor from "@/pages/AboutEditor";
+import VerifyCertificate from "@/pages/VerifyCertificate";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/quiz/:courseId" component={Quiz} />
       <Route path="/about" component={About} />
       <Route path="/admin/about" component={AboutEditor} />
+      <Route path="/verify/:code" component={VerifyCertificate} />
       <Route component={NotFound} />
     </Switch>
   );

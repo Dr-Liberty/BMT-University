@@ -124,6 +124,7 @@ export default function Dashboard() {
     }) : 'Unknown',
     txHash: cert.txHash || undefined,
     reward: cert.course?.bmtReward || 0,
+    verificationCode: cert.verificationCode || undefined,
   }));
 
   const handleViewCertificate = (cert: Certificate) => {
