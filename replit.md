@@ -4,24 +4,23 @@
 
 BMT University is a blockchain-powered learning management system built on the Kaspa network. The platform enables crypto projects to create branded educational courses where learners earn tokens for completing quizzes and receive on-chain certificates. Starting as a proof-of-concept for the $BMT (Bitcoin Maxi Tears) meme coin on Kasplex, with plans to expand to a multi-project subscription service supporting Kasplex and Igra networks.
 
-## Current Status
+## Current Status: Proof-of-Concept Complete
 
 ### Completed Features
-- Complete frontend prototype with BMT/Kaspa branding and animated blockdag background
-- Course browsing with filtering and search functionality
-- Student dashboard with progress tracking and reward history
-- Quiz system with multiple choice questions and scoring
-- Certificate modal with verification display
-- About $BMT page with editable description and roadmap (/about, /admin/about)
-- Full database schema for LMS entities
-- REST API endpoints for all resources
-- Sample course data with real API integration
+- **Wallet Authentication**: Connect via Kaspa wallet with session management
+- **Course Catalog**: Browse, search, filter courses by category and difficulty
+- **Course Enrollment**: Enroll in courses, track lesson progress
+- **Quiz System**: Multiple choice quizzes with grading and pass thresholds
+- **$BMT Rewards**: Earn tokens for completing courses, claim pending rewards
+- **Certificate System**: Earn certificates with verification codes and shareable links
+- **Public Verification**: Verify certificates via public `/verify/:code` page
+- **Analytics Dashboard**: Real-time stats, course leaderboard, activity feed
+- **About $BMT Page**: Editable content with roadmap display
 
-### In Progress
-- Wallet authentication flow (connect, sign message, session)
-- Course enrollment and progress tracking
-- Quiz attempt recording and grading
-- $BMT reward distribution system
+### Known Limitations (For Production)
+- **PostgreSQL Storage**: Data now persists in PostgreSQL database (via Neon serverless)
+- **Mock Wallet Signatures**: Signature verification simulated (real Kasplex SDK needed)
+- **Mock Blockchain Transactions**: Reward claims and certificates use mock tx hashes (real Kasplex integration needed)
 
 ## User Preferences
 
@@ -61,6 +60,12 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 
 **API Design**: RESTful endpoints under `/api` namespace:
 
+**Authentication Endpoints:**
+- `POST /api/auth/challenge` - Generate signing challenge for wallet
+- `POST /api/auth/verify` - Verify signature and create session
+- `GET /api/auth/me` - Get current authenticated user
+- `POST /api/auth/logout` - End session
+
 **Course Endpoints:**
 - `GET /api/courses` - List all published courses
 - `GET /api/courses/:id` - Get single course details
@@ -73,34 +78,35 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 **Quiz Endpoints:**
 - `GET /api/quizzes/:id` - Get quiz details
 - `GET /api/quizzes/:id/questions` - Get quiz questions
+- `POST /api/quizzes/:quizId/attempt` - Submit quiz attempt
 
 **Enrollment Endpoints:**
 - `GET /api/users/:userId/enrollments` - Get user enrollments
 - `POST /api/enrollments` - Enroll in a course
+- `POST /api/enrollments/:id/progress` - Update lesson progress
 
 **Certificate Endpoints:**
 - `GET /api/users/:userId/certificates` - Get user certificates
+- `GET /api/certificates/verify/:code` - Public certificate verification
 
 **Reward Endpoints:**
 - `GET /api/users/:userId/rewards` - Get user rewards
+- `POST /api/rewards/:id/claim` - Claim pending reward
+
+**Analytics Endpoints:**
+- `GET /api/stats` - Platform-wide statistics
+- `GET /api/analytics/leaderboard` - Top courses by enrollment
+- `GET /api/analytics/activity` - Recent platform activity
 
 **About Page:**
 - `GET /api/about` - Get about page content
 - `PUT /api/about` - Update about page content
 
-**Middleware Stack**:
-- JSON body parsing with raw body preservation (for webhook verification)
-- URL-encoded form data support
-- Request logging with timing and response tracking
-- Static file serving for production builds
-
-**Error Handling**: Centralized error responses with Zod validation error formatting for client-friendly messages.
-
 ### Database Layer
 
 **ORM**: Drizzle ORM for type-safe database queries and schema management.
 
-**Database**: PostgreSQL via Neon serverless, using WebSocket connections for serverless environments.
+**Database**: PostgreSQL via Neon serverless (schema defined, currently using MemStorage).
 
 **Schema Design** (defined in shared/schema.ts):
 
@@ -169,8 +175,10 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 **Certificates Table:**
 - `id` (uuid, primary key)
 - `userId`, `courseId` (foreign keys)
+- `verificationCode` (string, unique) - short code for public verification
 - `certificateUrl` (string)
 - `transactionHash` (string) - on-chain verification
+- `signature` (string) - blockchain signature
 - `issuedAt` (timestamp)
 
 **Rewards Table:**
@@ -178,11 +186,9 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `userId`, `courseId` (foreign keys)
 - `amount` (integer) - $BMT tokens
 - `type` (enum: course_completion, quiz_bonus, referral, achievement)
-- `transactionHash` (string, optional)
+- `txHash` (string, optional) - blockchain transaction hash
 - `status` (enum: pending, processing, confirmed, failed)
-- `createdAt` (timestamp)
-
-**Note**: Currently using in-memory storage (MemStorage) for development. Will migrate to PostgreSQL for production.
+- `createdAt`, `processedAt` (timestamps)
 
 ### Key File Locations
 
@@ -201,13 +207,18 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `client/src/pages/About.tsx` - About $BMT page
 - `client/src/pages/AboutEditor.tsx` - Admin editor for About page
 - `client/src/pages/Analytics.tsx` - Analytics dashboard
+- `client/src/pages/VerifyCertificate.tsx` - Public certificate verification
 
 **Key Components:**
 - `client/src/components/CourseCard.tsx` - Course display card
 - `client/src/components/QuizCard.tsx` - Quiz question card
-- `client/src/components/CertificateModal.tsx` - Certificate display
+- `client/src/components/CertificateModal.tsx` - Certificate display with sharing
+- `client/src/components/RewardHistory.tsx` - Reward claim interface
 - `client/src/components/Navbar.tsx` - Navigation with wallet connect
 - `client/src/components/HeroSection.tsx` - Landing hero with blockdag animation
+
+**Authentication:**
+- `client/src/lib/auth.ts` - Wallet connection and auth state management
 
 ### Build System
 
@@ -221,60 +232,35 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 
 **Asset Handling**: Static assets in `/attached_assets` directory, aliased as `@assets` for imports.
 
-## External Dependencies
-
-### Core Framework Dependencies
-- **React 18**: UI framework with concurrent rendering
-- **Express.js**: Backend HTTP server
-- **TypeScript**: Type safety across frontend and backend
-- **Vite**: Frontend build tool and dev server
-- **esbuild**: Fast server-side bundling
-
-### UI Component Libraries
-- **Radix UI**: Unstyled, accessible component primitives
-- **shadcn/ui**: Pre-styled components built on Radix
-- **Tailwind CSS**: Utility-first CSS framework
-- **Lucide React**: Icon library
-- **Framer Motion**: Animation library
-
-### Data & State Management
-- **TanStack Query**: Async state management and data fetching
-- **React Hook Form**: Form state and validation
-- **Zod**: Schema validation and type inference
-- **Drizzle ORM**: Type-safe database toolkit
-
-### Database
-- **Neon Serverless PostgreSQL**: Managed PostgreSQL with WebSocket support
-- **@neondatabase/serverless**: Neon client library with pooling
-
-### Development Tools
-- **tsx**: TypeScript execution for development
-- **Wouter**: Lightweight routing library
-- **class-variance-authority**: Component variant utilities
-- **clsx/tailwind-merge**: Conditional className utilities
-
 ## Future Roadmap
 
-### Phase 1 (Current): Identity & Data Model
+### Phase 1: Identity & Data Model ✅
 - [x] Database schema for all LMS entities
 - [x] Storage interface with CRUD operations
 - [x] REST API endpoints
 - [x] Frontend connected to real API
-- [ ] Wallet authentication flow
+- [x] Wallet authentication flow
 
-### Phase 2: Course Delivery
-- [ ] Course enrollment with wallet connection
-- [ ] Lesson progress tracking
-- [ ] Video lesson support
+### Phase 2: Course Delivery ✅
+- [x] Course enrollment with wallet connection
+- [x] Lesson progress tracking
+- [x] Video lesson support (URL-based)
 
-### Phase 3: Assessments & Rewards
-- [ ] Quiz attempt recording
-- [ ] Automated grading with pass/fail
-- [ ] $BMT reward distribution via Kasplex
-- [ ] Certificate generation with on-chain verification
+### Phase 3: Assessments & Rewards ✅
+- [x] Quiz attempt recording
+- [x] Automated grading with pass/fail
+- [x] $BMT reward distribution system
+- [x] Certificate generation with verification
 
-### Phase 4: Analytics & Expansion
-- [ ] Instructor analytics dashboard
-- [ ] Platform-wide statistics
-- [ ] Multi-organization support for subscription model
+### Phase 4: Analytics & Dashboard ✅
+- [x] Student dashboard with progress and rewards
+- [x] Platform analytics dashboard
+- [x] Course leaderboard
+- [x] Live activity feed
+
+### Phase 5: Production Hardening (Next)
+- [ ] Replace MemStorage with PostgreSQL persistence
+- [ ] Integrate real Kasplex SDK for wallet signatures
+- [ ] Implement actual blockchain transactions for rewards
+- [ ] Add multi-organization support for subscription model
 - [ ] Igra network integration
