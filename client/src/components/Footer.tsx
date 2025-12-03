@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import bmtLogo from '@assets/Gemini_Generated_Image_a36drsa36drsa36d_1764781999555.png';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 import { SiX, SiTelegram, SiDiscord } from 'react-icons/si';
 
 export default function Footer() {
@@ -12,7 +12,7 @@ export default function Footer() {
               <img
                 src={bmtLogo}
                 alt="BMT University"
-                className="w-12 h-12 object-contain"
+                className="w-12 h-12 rounded-full border-2 border-kaspa-cyan"
               />
               <span className="font-heading font-bold text-xl text-white">
                 BMT <span className="text-kaspa-cyan">University</span>

@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Download, Share2, ExternalLink, Award } from 'lucide-react';
-import bmtLogo from '@assets/Gemini_Generated_Image_a36drsa36drsa36d_1764781999555.png';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 
 export interface Certificate {
   id: string;
@@ -37,7 +37,7 @@ export default function CertificateModal({ certificate, open, onClose }: Certifi
               <img
                 src={bmtLogo}
                 alt="BMT University"
-                className="w-24 h-24 object-contain"
+                className="w-20 h-20 rounded-full border-4 border-kaspa-cyan"
               />
             </div>
 

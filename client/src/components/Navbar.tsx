@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import WalletConnectButton from './WalletConnectButton';
-import bmtLogo from '@assets/Gemini_Generated_Image_a36drsa36drsa36d_1764781999555.png';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -21,7 +21,7 @@ export default function Navbar() {
             <img 
               src={bmtLogo} 
               alt="BMT University" 
-              className="w-10 h-10 object-contain"
+              className="w-10 h-10 rounded-full object-cover border-2 border-kaspa-cyan"
             />
             <span className="font-heading font-bold text-xl text-white hidden sm:block">
               BMT <span className="text-kaspa-cyan">University</span>

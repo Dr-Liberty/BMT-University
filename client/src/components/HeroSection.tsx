@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Wallet, BookOpen, Award, Coins } from 'lucide-react';
-import bmtLogo from '@assets/Gemini_Generated_Image_a36drsa36drsa36d_1764781999555.png';
+import bmtLogo from '@assets/unnamed_1764742650253.jpg';
 
 interface HeroStat {
   icon: typeof Wallet;
@@ -29,7 +29,7 @@ export default function HeroSection({ onConnectWallet }: HeroSectionProps) {
           <img
             src={bmtLogo}
             alt="BMT Logo"
-            className="w-48 h-48 md:w-64 md:h-64 object-contain drop-shadow-[0_0_25px_rgba(0,212,255,0.3)] mx-auto"
+            className="w-40 h-40 md:w-52 md:h-52 rounded-full object-cover border-4 border-kaspa-cyan shadow-lg shadow-kaspa-cyan/20 mx-auto"
             data-testid="img-hero-logo"
           />
         </div>
