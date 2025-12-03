@@ -316,7 +316,30 @@ export async function registerRoutes(
   // ============ QUIZ ATTEMPTS ============
   const submitQuizSchema = z.object({
     answers: z.record(z.string(), z.string()),
+    fingerprint: z.object({
+      hash: z.string(),
+      screenResolution: z.string().optional(),
+      timezone: z.string().optional(),
+      language: z.string().optional(),
+      platform: z.string().optional(),
+    }).optional(),
   });
+
+  // Helper function to get client IP
+  function getClientIp(req: any): string {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+      return forwarded.split(',')[0].trim();
+    }
+    return req.ip || req.connection?.remoteAddress || 'unknown';
+  }
+
+  // Helper function to create fingerprint hash from various signals
+  function createFingerprintHash(data: { userAgent?: string; screenResolution?: string; timezone?: string; language?: string; platform?: string }): string {
+    const crypto = require('crypto');
+    const str = `${data.userAgent || ''}|${data.screenResolution || ''}|${data.timezone || ''}|${data.language || ''}|${data.platform || ''}`;
+    return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
+  }
 
   app.post("/api/quizzes/:quizId/submit", authMiddleware, async (req: any, res) => {
     try {
@@ -324,6 +347,14 @@ export async function registerRoutes(
       if (!quiz) {
         return res.status(404).json({ error: "Quiz not found" });
       }
+      
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      // ============ ANTI-ABUSE CHECK 1: Per-course reward cap ============
+      const alreadyRewarded = await storage.hasUserCompletedCourseReward(req.user.id, course.id);
       
       // Check attempt limit
       const previousAttempts = await storage.getQuizAttempts(req.user.id, quiz.id);
@@ -334,6 +365,72 @@ export async function registerRoutes(
       const result = submitQuizSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).message });
+      }
+
+      // ============ ANTI-ABUSE CHECK 2: Device/IP fingerprinting ============
+      const clientIp = getClientIp(req);
+      const userAgent = req.headers['user-agent'] || '';
+      const fingerprintData = result.data.fingerprint;
+      
+      // Create or use provided fingerprint hash
+      const fingerprintHash = fingerprintData?.hash || createFingerprintHash({
+        userAgent,
+        screenResolution: fingerprintData?.screenResolution,
+        timezone: fingerprintData?.timezone,
+        language: fingerprintData?.language,
+        platform: fingerprintData?.platform,
+      });
+
+      // Save device fingerprint
+      await storage.saveDeviceFingerprint({
+        fingerprintHash,
+        userId: req.user.id,
+        walletAddress: req.user.walletAddress || '',
+        ipAddress: clientIp,
+        userAgent,
+        screenResolution: fingerprintData?.screenResolution,
+        timezone: fingerprintData?.timezone,
+        language: fingerprintData?.language,
+        platform: fingerprintData?.platform,
+      });
+
+      // Check for suspicious patterns
+      const suspiciousFlags: string[] = [];
+      
+      // Check if same fingerprint used by multiple wallets
+      const fingerprintUsers = await storage.getDeviceFingerprintsByHash(fingerprintHash);
+      const uniqueWallets = new Set(fingerprintUsers.map(f => f.walletAddress));
+      if (uniqueWallets.size > 1) {
+        suspiciousFlags.push(`fingerprint_multiple_wallets:${uniqueWallets.size}`);
+        await storage.logSuspiciousActivity({
+          userId: req.user.id,
+          walletAddress: req.user.walletAddress,
+          fingerprintHash,
+          ipAddress: clientIp,
+          activityType: 'multiple_wallets_same_device',
+          description: `Same device fingerprint used by ${uniqueWallets.size} different wallets`,
+          severity: uniqueWallets.size > 3 ? 'high' : 'medium',
+          courseId: course.id,
+          metadata: { wallets: Array.from(uniqueWallets) },
+        });
+      }
+
+      // Check if same IP used by multiple wallets
+      const ipUsers = await storage.getDeviceFingerprintsByIp(clientIp);
+      const uniqueWalletsFromIp = new Set(ipUsers.map(f => f.walletAddress));
+      if (uniqueWalletsFromIp.size > 2) {
+        suspiciousFlags.push(`ip_multiple_wallets:${uniqueWalletsFromIp.size}`);
+        await storage.logSuspiciousActivity({
+          userId: req.user.id,
+          walletAddress: req.user.walletAddress,
+          fingerprintHash,
+          ipAddress: clientIp,
+          activityType: 'multiple_wallets_same_ip',
+          description: `Same IP address used by ${uniqueWalletsFromIp.size} different wallets`,
+          severity: uniqueWalletsFromIp.size > 5 ? 'high' : 'low',
+          courseId: course.id,
+          metadata: { wallets: Array.from(uniqueWalletsFromIp) },
+        });
       }
       
       // Grade the quiz
@@ -371,25 +468,55 @@ export async function registerRoutes(
       let reward = null;
       let certificate = null;
       let payoutTransaction = null;
+      let rewardBlocked = false;
+      let blockReason = '';
       
       if (passed) {
-        const course = await storage.getCourse(quiz.courseId);
-        if (course && course.bmtReward > 0) {
-          reward = await storage.createReward({
-            userId: req.user.id,
-            courseId: course.id,
-            amount: course.bmtReward,
-            type: 'course_completion',
-          });
+        // Only issue reward if user hasn't already received one for this course
+        if (alreadyRewarded) {
+          rewardBlocked = true;
+          blockReason = 'You have already received a reward for completing this course. Each wallet can only earn rewards once per course.';
           
-          // Create payout transaction for admin processing
-          payoutTransaction = await storage.createPayoutTransaction({
-            rewardId: reward.id,
-            userId: req.user.id,
-            recipientAddress: req.user.walletAddress || '',
-            amount: course.bmtReward,
-            tokenTicker: 'BMT',
-          });
+          // Log this as informational (not necessarily suspicious, but good to track)
+          console.log(`[Anti-Abuse] Blocked duplicate reward: user=${req.user.id}, course=${course.id}, wallet=${req.user.walletAddress}`);
+        } else if (course.bmtReward > 0) {
+          // Check if this device/IP has high-severity suspicious activity
+          const userSuspiciousActivity = await storage.getSuspiciousActivityByUser(req.user.id);
+          const highSeverityFlags = userSuspiciousActivity.filter(a => a.severity === 'high');
+          
+          if (highSeverityFlags.length > 0) {
+            rewardBlocked = true;
+            blockReason = 'Your account has been flagged for review. Please contact support if you believe this is an error.';
+            
+            await storage.logSuspiciousActivity({
+              userId: req.user.id,
+              walletAddress: req.user.walletAddress,
+              fingerprintHash,
+              ipAddress: clientIp,
+              activityType: 'reward_blocked_suspicious',
+              description: 'Reward blocked due to high-severity suspicious activity',
+              severity: 'high',
+              courseId: course.id,
+              metadata: { previousFlags: highSeverityFlags.length },
+            });
+          } else {
+            // All checks passed - issue the reward
+            reward = await storage.createReward({
+              userId: req.user.id,
+              courseId: course.id,
+              amount: course.bmtReward,
+              type: 'course_completion',
+            });
+            
+            // Create payout transaction for admin processing
+            payoutTransaction = await storage.createPayoutTransaction({
+              rewardId: reward.id,
+              userId: req.user.id,
+              recipientAddress: req.user.walletAddress || '',
+              amount: course.bmtReward,
+              tokenTicker: 'BMT',
+            });
+          }
           
           certificate = await storage.createCertificate({
             userId: req.user.id,
@@ -419,6 +546,9 @@ export async function registerRoutes(
         reward,
         certificate,
         payoutTransaction,
+        rewardBlocked,
+        blockReason: rewardBlocked ? blockReason : undefined,
+        suspiciousFlags: suspiciousFlags.length > 0 ? suspiciousFlags : undefined,
       });
     } catch (error) {
       console.error("Error submitting quiz:", error);
