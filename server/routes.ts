@@ -534,6 +534,38 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/rewards/:rewardId/claim", authMiddleware, async (req: any, res) => {
+    try {
+      const rewards = await storage.getRewardsByUser(req.user.id);
+      const reward = rewards.find(r => r.id === req.params.rewardId);
+      
+      if (!reward) {
+        return res.status(404).json({ error: "Reward not found" });
+      }
+      
+      if (reward.status !== 'pending') {
+        return res.status(400).json({ error: "Reward already processed" });
+      }
+      
+      // Simulate blockchain transaction (in production, this would call Kasplex SDK)
+      const mockTxHash = `kas:${randomBytes(32).toString('hex').slice(0, 64)}`;
+      
+      const updated = await storage.updateReward(reward.id, {
+        status: 'confirmed',
+        txHash: mockTxHash,
+        processedAt: new Date(),
+      });
+      
+      res.json({
+        ...updated,
+        message: `Successfully claimed ${reward.amount} $BMT!`,
+      });
+    } catch (error) {
+      console.error("Error claiming reward:", error);
+      res.status(500).json({ error: "Failed to claim reward" });
+    }
+  });
+
   // ============ ANALYTICS (Public stats) ============
   app.get("/api/stats", async (req, res) => {
     try {
