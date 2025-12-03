@@ -1,58 +1,32 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import StatsCard from '@/components/StatsCard';
-import CourseCard, { Course } from '@/components/CourseCard';
+import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import RewardHistory, { RewardTransaction } from '@/components/RewardHistory';
 import CertificateModal, { Certificate } from '@/components/CertificateModal';
-import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock } from 'lucide-react';
+import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet } from 'lucide-react';
+import type { Course, Enrollment, Reward } from '@shared/schema';
 
-// todo: remove mock functionality
-const enrolledCourses: (Course & { progress: number })[] = [
-  {
-    id: '1',
-    title: 'Introduction to Kaspa Blockchain',
-    description: 'Master the fundamentals of the Kaspa blockDAG architecture.',
-    instructor: 'Shai Wyborski',
-    duration: '4h 30m',
-    students: 1247,
-    rating: 4.9,
-    price: 500,
-    difficulty: 'Beginner',
-    category: 'Blockchain',
-    progress: 75,
-  },
-  {
-    id: '3',
-    title: 'DeFi Trading Strategies',
-    description: 'Learn proven trading strategies for decentralized finance.',
-    instructor: 'Whale Watcher',
-    duration: '3h 45m',
-    students: 2134,
-    rating: 4.6,
-    price: 750,
-    difficulty: 'Intermediate',
-    category: 'Trading',
-    progress: 30,
-  },
-  {
-    id: '5',
-    title: 'Crypto Fundamentals',
-    description: 'Everything you need to know about cryptocurrency.',
-    instructor: 'Crypto Chad',
-    duration: '2h 30m',
-    students: 3421,
-    rating: 4.5,
-    price: 250,
-    difficulty: 'Beginner',
-    category: 'Fundamentals',
-    progress: 100,
-  },
-];
+function mapCourseToDisplay(course: Course, enrollment?: Enrollment): CourseDisplay {
+  return {
+    id: course.id,
+    title: course.title,
+    description: course.description,
+    shortDescription: course.shortDescription,
+    thumbnail: course.thumbnail,
+    category: course.category,
+    difficulty: course.difficulty,
+    duration: course.duration,
+    enrollmentCount: course.enrollmentCount,
+    rating: course.rating,
+    bmtReward: course.bmtReward,
+    progress: enrollment?.progress ?? 0,
+  };
+}
 
-const completedCourses = enrolledCourses.filter(c => c.progress === 100);
-
-const transactions: RewardTransaction[] = [
+const demoTransactions: RewardTransaction[] = [
   {
     id: '1',
     type: 'course_completion',
@@ -82,7 +56,7 @@ const transactions: RewardTransaction[] = [
   },
 ];
 
-const certificates: Certificate[] = [
+const demoCertificates: Certificate[] = [
   {
     id: '1',
     courseName: 'Crypto Fundamentals',
@@ -93,25 +67,81 @@ const certificates: Certificate[] = [
   },
 ];
 
+interface DashboardEmptyStateProps {
+  onExplore: () => void;
+}
+
+function DashboardEmptyState({ onExplore }: DashboardEmptyStateProps) {
+  return (
+    <div className="text-center py-16">
+      <div className="p-4 rounded-full bg-kaspa-cyan/10 w-fit mx-auto mb-4">
+        <Wallet className="w-12 h-12 text-kaspa-cyan" />
+      </div>
+      <h3 className="font-heading font-semibold text-xl text-white mb-2">Connect Your Wallet</h3>
+      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+        Connect your Kaspa wallet to start learning, earn $BMT rewards, and track your progress.
+      </p>
+      <Button 
+        onClick={onExplore}
+        className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
+      >
+        Explore Courses
+      </Button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('courses');
   const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
 
-  const totalEarned = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-  const inProgressCourses = enrolledCourses.filter(c => c.progress < 100);
+  const isWalletConnected = false;
+
+  const { data: allCourses = [], isLoading: coursesLoading } = useQuery<Course[]>({
+    queryKey: ['/api/courses'],
+  });
+
+  const enrolledCourses: CourseDisplay[] = allCourses.slice(0, 3).map((course, idx) => 
+    mapCourseToDisplay(course, { 
+      id: `demo-${idx}`,
+      userId: 'demo',
+      courseId: course.id,
+      progress: [75, 30, 100][idx] ?? 0,
+      status: [75, 30, 100][idx] === 100 ? 'completed' : 'in_progress',
+      completedLessons: [],
+      enrolledAt: new Date(),
+      completedAt: null,
+    })
+  );
+
+  const completedCourses = enrolledCourses.filter(c => c.progress === 100);
+  const inProgressCourses = enrolledCourses.filter(c => (c.progress ?? 0) < 100);
+  const totalEarned = demoTransactions.reduce((sum, tx) => sum + tx.amount, 0);
 
   const handleViewCertificate = (cert: Certificate) => {
     setSelectedCertificate(cert);
     setCertificateModalOpen(true);
   };
 
+  const handleExplore = () => {
+    window.location.href = '/courses';
+  };
+
+  if (coursesLoading) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-dashboard">
+        <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen pt-20 pb-8" data-testid="page-dashboard">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="mb-8">
           <h1 className="font-heading font-bold text-4xl text-white mb-2">Student Dashboard</h1>
-          <p className="text-muted-foreground">Track your learning progress and rewards</p>
+          <p className="text-muted-foreground">Track your learning progress and $BMT rewards</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -130,7 +160,7 @@ export default function Dashboard() {
           />
           <StatsCard
             title="Certificates"
-            value={certificates.length.toString()}
+            value={demoCertificates.length.toString()}
             icon={Award}
             accentColor="orange"
           />
@@ -197,11 +227,15 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
+            {enrolledCourses.length === 0 && (
+              <DashboardEmptyState onExplore={handleExplore} />
+            )}
           </TabsContent>
 
           <TabsContent value="certificates">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {certificates.map((cert) => (
+              {demoCertificates.map((cert) => (
                 <div
                   key={cert.id}
                   className="bg-card border border-border rounded-lg p-6 hover:border-kaspa-cyan/50 transition-colors cursor-pointer"
@@ -227,7 +261,7 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {certificates.length === 0 && (
+            {demoCertificates.length === 0 && (
               <div className="text-center py-16">
                 <Award className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-heading font-semibold text-xl text-white mb-2">No certificates yet</h3>
@@ -237,7 +271,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="rewards">
-            <RewardHistory transactions={transactions} />
+            <RewardHistory transactions={demoTransactions} />
           </TabsContent>
         </Tabs>
       </div>

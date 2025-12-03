@@ -2,11 +2,31 @@
 
 ## Overview
 
-BMT University is a blockchain-powered educational platform built on the Kaspa network. The platform enables users to learn about cryptocurrency and blockchain through expert-led courses, complete quizzes to earn $BMT tokens (Bitcoin Maxi Tears), and receive on-chain certificates of completion. The application combines meme culture with serious educational content, featuring a dark, neon-tech aesthetic inspired by crypto-native design patterns.
+BMT University is a blockchain-powered learning management system built on the Kaspa network. The platform enables crypto projects to create branded educational courses where learners earn tokens for completing quizzes and receive on-chain certificates. Starting as a proof-of-concept for the $BMT (Bitcoin Maxi Tears) meme coin on Kasplex, with plans to expand to a multi-project subscription service supporting Kasplex and Igra networks.
+
+## Current Status
+
+### Completed Features
+- Complete frontend prototype with BMT/Kaspa branding and animated blockdag background
+- Course browsing with filtering and search functionality
+- Student dashboard with progress tracking and reward history
+- Quiz system with multiple choice questions and scoring
+- Certificate modal with verification display
+- About $BMT page with editable description and roadmap (/about, /admin/about)
+- Full database schema for LMS entities
+- REST API endpoints for all resources
+- Sample course data with real API integration
+
+### In Progress
+- Wallet authentication flow (connect, sign message, session)
+- Course enrollment and progress tracking
+- Quiz attempt recording and grading
+- $BMT reward distribution system
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Design approach: Wallet-centric authentication (no traditional credentials), users identified by wallet address.
 
 ## System Architecture
 
@@ -39,9 +59,34 @@ Preferred communication style: Simple, everyday language.
 
 **Language**: TypeScript with ES modules, compiled via esbuild for production builds.
 
-**API Design**: RESTful endpoints under `/api` namespace. Currently implements:
-- `/api/about` - GET/PUT for About page content management
-- Future endpoints will handle courses, quizzes, user progress, and reward distribution
+**API Design**: RESTful endpoints under `/api` namespace:
+
+**Course Endpoints:**
+- `GET /api/courses` - List all published courses
+- `GET /api/courses/:id` - Get single course details
+- `POST /api/courses` - Create new course
+- `PUT /api/courses/:id` - Update course
+- `DELETE /api/courses/:id` - Delete course
+- `GET /api/courses/:id/lessons` - Get lessons for a course
+- `GET /api/courses/:id/quiz` - Get quiz for a course
+
+**Quiz Endpoints:**
+- `GET /api/quizzes/:id` - Get quiz details
+- `GET /api/quizzes/:id/questions` - Get quiz questions
+
+**Enrollment Endpoints:**
+- `GET /api/users/:userId/enrollments` - Get user enrollments
+- `POST /api/enrollments` - Enroll in a course
+
+**Certificate Endpoints:**
+- `GET /api/users/:userId/certificates` - Get user certificates
+
+**Reward Endpoints:**
+- `GET /api/users/:userId/rewards` - Get user rewards
+
+**About Page:**
+- `GET /api/about` - Get about page content
+- `PUT /api/about` - Update about page content
 
 **Middleware Stack**:
 - JSON body parsing with raw body preservation (for webhook verification)
@@ -57,24 +102,112 @@ Preferred communication style: Simple, everyday language.
 
 **Database**: PostgreSQL via Neon serverless, using WebSocket connections for serverless environments.
 
-**Schema Design**:
-- `users` table: User authentication with username/password (authentication system to be implemented)
-- `about_pages` table: CMS-style content for the About page, including roadmap items stored as JSONB
-- Future schemas will include courses, lessons, quizzes, certificates, and reward transactions
+**Schema Design** (defined in shared/schema.ts):
 
-**Migrations**: Drizzle Kit for schema migrations, stored in `/migrations` directory.
+**Users Table:**
+- `id` (uuid, primary key)
+- `walletAddress` (string, unique) - Kaspa wallet address
+- `displayName` (string, optional)
+- `role` (enum: student, instructor, admin)
+- `avatarUrl` (string, optional)
+- `createdAt`, `lastLoginAt` (timestamps)
 
-**Connection Pooling**: Neon serverless pool with WebSocket support for optimal serverless performance.
+**Courses Table:**
+- `id` (uuid, primary key)
+- `title`, `description`, `shortDescription`
+- `thumbnail` (string, optional)
+- `category` (string) - blockchain, tokenomics, development, etc.
+- `difficulty` (enum: beginner, intermediate, advanced)
+- `instructorId` (foreign key to users)
+- `duration` (integer, minutes)
+- `bmtReward` (integer) - $BMT tokens awarded on completion
+- `isPublished` (boolean)
+- `enrollmentCount`, `rating`
+- `createdAt`, `updatedAt`
 
-### Design System
+**Lessons Table:**
+- `id` (uuid, primary key)
+- `courseId` (foreign key)
+- `title`, `content`
+- `videoUrl` (optional)
+- `orderIndex` (integer)
+- `duration` (integer, minutes)
 
-**Component Architecture**: Atomic design pattern with reusable UI primitives in `/components/ui` and feature components in `/components`.
+**Quizzes Table:**
+- `id` (uuid, primary key)
+- `courseId` (foreign key)
+- `title`, `description`
+- `passingScore` (integer, default 70)
+- `timeLimit` (integer, minutes, optional)
+- `maxAttempts` (integer, optional)
 
-**Theming**: CSS custom properties for runtime theme values, with Tailwind utilities for compile-time styles. Dark mode enforced globally.
+**Quiz Questions Table:**
+- `id` (uuid, primary key)
+- `quizId` (foreign key)
+- `question` (text)
+- `options` (jsonb array of {text, isCorrect})
+- `explanation` (optional)
+- `orderIndex` (integer)
 
-**Accessibility**: Radix UI primitives ensure ARIA compliance and keyboard navigation support across all interactive components.
+**Enrollments Table:**
+- `id` (uuid, primary key)
+- `userId`, `courseId` (foreign keys)
+- `progress` (integer, 0-100)
+- `status` (enum: enrolled, in_progress, completed)
+- `completedLessons` (text array)
+- `enrolledAt`, `completedAt`
 
-**Responsive Design**: Mobile-first approach with breakpoints at 768px (md), 1024px (lg), and 1280px (xl).
+**Quiz Attempts Table:**
+- `id` (uuid, primary key)
+- `userId`, `quizId` (foreign keys)
+- `score` (integer)
+- `passed` (boolean)
+- `answers` (jsonb)
+- `attemptNumber` (integer)
+- `startedAt`, `completedAt`
+
+**Certificates Table:**
+- `id` (uuid, primary key)
+- `userId`, `courseId` (foreign keys)
+- `certificateUrl` (string)
+- `transactionHash` (string) - on-chain verification
+- `issuedAt` (timestamp)
+
+**Rewards Table:**
+- `id` (uuid, primary key)
+- `userId`, `courseId` (foreign keys)
+- `amount` (integer) - $BMT tokens
+- `type` (enum: course_completion, quiz_bonus, referral, achievement)
+- `transactionHash` (string, optional)
+- `status` (enum: pending, processing, confirmed, failed)
+- `createdAt` (timestamp)
+
+**Note**: Currently using in-memory storage (MemStorage) for development. Will migrate to PostgreSQL for production.
+
+### Key File Locations
+
+**Schema & Types:**
+- `shared/schema.ts` - Database schema and Zod types
+
+**Backend:**
+- `server/routes.ts` - API route handlers
+- `server/storage.ts` - Storage interface and MemStorage implementation
+
+**Frontend Pages:**
+- `client/src/pages/Home.tsx` - Landing page
+- `client/src/pages/Courses.tsx` - Course catalog
+- `client/src/pages/Dashboard.tsx` - Student dashboard
+- `client/src/pages/Quiz.tsx` - Quiz interface
+- `client/src/pages/About.tsx` - About $BMT page
+- `client/src/pages/AboutEditor.tsx` - Admin editor for About page
+- `client/src/pages/Analytics.tsx` - Analytics dashboard
+
+**Key Components:**
+- `client/src/components/CourseCard.tsx` - Course display card
+- `client/src/components/QuizCard.tsx` - Quiz question card
+- `client/src/components/CertificateModal.tsx` - Certificate display
+- `client/src/components/Navbar.tsx` - Navigation with wallet connect
+- `client/src/components/HeroSection.tsx` - Landing hero with blockdag animation
 
 ### Build System
 
@@ -102,6 +235,7 @@ Preferred communication style: Simple, everyday language.
 - **shadcn/ui**: Pre-styled components built on Radix
 - **Tailwind CSS**: Utility-first CSS framework
 - **Lucide React**: Icon library
+- **Framer Motion**: Animation library
 
 ### Data & State Management
 - **TanStack Query**: Async state management and data fetching
@@ -119,9 +253,28 @@ Preferred communication style: Simple, everyday language.
 - **class-variance-authority**: Component variant utilities
 - **clsx/tailwind-merge**: Conditional className utilities
 
-### Future Integrations (Planned)
-- Wallet connection libraries for Kaspa network
-- Smart contract interaction for token rewards
-- Certificate NFT minting on Kasplex protocol
-- Payment processing for course enrollment
-- Email service for notifications
+## Future Roadmap
+
+### Phase 1 (Current): Identity & Data Model
+- [x] Database schema for all LMS entities
+- [x] Storage interface with CRUD operations
+- [x] REST API endpoints
+- [x] Frontend connected to real API
+- [ ] Wallet authentication flow
+
+### Phase 2: Course Delivery
+- [ ] Course enrollment with wallet connection
+- [ ] Lesson progress tracking
+- [ ] Video lesson support
+
+### Phase 3: Assessments & Rewards
+- [ ] Quiz attempt recording
+- [ ] Automated grading with pass/fail
+- [ ] $BMT reward distribution via Kasplex
+- [ ] Certificate generation with on-chain verification
+
+### Phase 4: Analytics & Expansion
+- [ ] Instructor analytics dashboard
+- [ ] Platform-wide statistics
+- [ ] Multi-organization support for subscription model
+- [ ] Igra network integration

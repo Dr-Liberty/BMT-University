@@ -1,93 +1,42 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import CourseCard, { Course } from './CourseCard';
-import { Sparkles, TrendingUp, Clock } from 'lucide-react';
+import { Link } from 'wouter';
+import CourseCard, { CourseDisplay } from './CourseCard';
+import { Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import type { Course } from '@shared/schema';
 
-// todo: remove mock functionality
-const mockCourses: Course[] = [
-  {
-    id: '1',
-    title: 'Introduction to Kaspa Blockchain',
-    description: 'Master the fundamentals of the Kaspa blockDAG architecture and understand why it\'s revolutionizing the crypto space.',
-    instructor: 'Shai Wyborski',
-    duration: '4h 30m',
-    students: 1247,
-    rating: 4.9,
-    price: 500,
-    difficulty: 'Beginner',
-    category: 'Blockchain',
-  },
-  {
-    id: '2',
-    title: 'KRC-20 Token Development',
-    description: 'Build and deploy your own tokens on the Kasplex protocol. Hands-on coding with real examples.',
-    instructor: 'Dev McDevface',
-    duration: '6h 15m',
-    students: 856,
-    rating: 4.7,
-    price: 1000,
-    difficulty: 'Advanced',
-    category: 'Development',
-  },
-  {
-    id: '3',
-    title: 'DeFi Trading Strategies',
-    description: 'Learn proven trading strategies for decentralized finance. Risk management and portfolio optimization.',
-    instructor: 'Whale Watcher',
-    duration: '3h 45m',
-    students: 2134,
-    rating: 4.6,
-    price: 750,
-    difficulty: 'Intermediate',
-    category: 'Trading',
-  },
-  {
-    id: '4',
-    title: 'Smart Contract Security',
-    description: 'Identify vulnerabilities and audit smart contracts. Essential knowledge for any blockchain developer.',
-    instructor: 'Security Sam',
-    duration: '5h 20m',
-    students: 634,
-    rating: 4.8,
-    price: 1500,
-    difficulty: 'Advanced',
-    category: 'Security',
-  },
-  {
-    id: '5',
-    title: 'Crypto Fundamentals',
-    description: 'Everything you need to know about cryptocurrency, from Bitcoin basics to advanced tokenomics.',
-    instructor: 'Crypto Chad',
-    duration: '2h 30m',
-    students: 3421,
-    rating: 4.5,
-    price: 250,
-    difficulty: 'Beginner',
-    category: 'Fundamentals',
-  },
-  {
-    id: '6',
-    title: 'NFT Creation & Marketing',
-    description: 'Create, mint, and market your NFT collections. Full guide from art to launch.',
-    instructor: 'NFT Ninja',
-    duration: '4h 00m',
-    students: 1876,
-    rating: 4.4,
-    price: 800,
-    difficulty: 'Intermediate',
-    category: 'NFTs',
-  },
-];
+function mapCourseToDisplay(course: Course): CourseDisplay {
+  return {
+    id: course.id,
+    title: course.title,
+    description: course.description,
+    shortDescription: course.shortDescription,
+    thumbnail: course.thumbnail,
+    category: course.category,
+    difficulty: course.difficulty,
+    duration: course.duration,
+    enrollmentCount: course.enrollmentCount,
+    rating: course.rating,
+    bmtReward: course.bmtReward,
+  };
+}
 
 type FilterType = 'featured' | 'trending' | 'new';
 
 export default function FeaturedCourses() {
   const [filter, setFilter] = useState<FilterType>('featured');
 
+  const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
+    queryKey: ['/api/courses'],
+  });
+
   const handleEnroll = (courseId: string) => {
     console.log('Enrolling in course:', courseId);
   };
+
+  const displayCourses = courses.slice(0, 6);
 
   return (
     <section className="py-16 px-4 sm:px-6" data-testid="section-featured-courses">
@@ -116,24 +65,51 @@ export default function FeaturedCourses() {
           </Tabs>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockCourses.map((course) => (
-            <CourseCard
-              key={course.id}
-              course={course}
-              onEnroll={handleEnroll}
-            />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading courses...</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="font-heading font-semibold text-xl text-white mb-2">Couldn't load courses</h3>
+            <p className="text-muted-foreground mb-6">Please try again in a moment.</p>
+            <Button onClick={() => refetch()} variant="outline" className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </Button>
+          </div>
+        ) : displayCourses.length === 0 ? (
+          <div className="text-center py-16">
+            <Sparkles className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="font-heading font-semibold text-xl text-white mb-2">No courses available yet</h3>
+            <p className="text-muted-foreground">Check back soon for new content.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayCourses.map((course) => (
+              <CourseCard
+                key={course.id}
+                course={mapCourseToDisplay(course)}
+                onEnroll={handleEnroll}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="flex justify-center mt-10">
-          <Button 
-            variant="outline" 
-            className="border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase"
-            data-testid="button-view-all-courses"
-          >
-            View All Courses
-          </Button>
+          <Link href="/courses">
+            <Button 
+              variant="outline" 
+              className="border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase"
+              data-testid="button-view-all-courses"
+            >
+              View All Courses
+            </Button>
+          </Link>
         </div>
       </div>
     </section>

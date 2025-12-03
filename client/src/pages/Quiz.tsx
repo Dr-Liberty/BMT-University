@@ -1,15 +1,40 @@
-import { useState } from 'react';
-import { useLocation } from 'wouter';
+import { useState, useMemo } from 'react';
+import { useLocation, useParams } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import QuizCard, { QuizQuestion } from '@/components/QuizCard';
-import { ArrowLeft, ArrowRight, Trophy, RefreshCw } from 'lucide-react';
+import QuizCard, { QuizQuestion as DisplayQuestion } from '@/components/QuizCard';
+import { ArrowLeft, Trophy, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import type { Quiz as QuizType, Course } from '@shared/schema';
 
-// todo: remove mock functionality
-const mockQuiz: QuizQuestion[] = [
+interface QuizWithQuestions extends QuizType {
+  questions?: Array<{
+    id: string;
+    question: string;
+    options: Array<{ id?: string; text: string }>;
+    explanation?: string | null;
+    orderIndex?: number;
+  }>;
+}
+
+interface CourseWithDetails extends Course {
+  quiz?: QuizWithQuestions;
+}
+
+function mapToDisplayQuestion(q: { id: string; question: string; options: Array<{ id?: string; text: string }>; explanation?: string | null; }, index: number): DisplayQuestion {
+  const options = Array.isArray(q.options) ? q.options : [];
+  return {
+    id: q.id,
+    question: q.question,
+    options: options.map(opt => opt.text || String(opt)),
+    correctAnswer: index % 4,
+  };
+}
+
+const fallbackQuestions: DisplayQuestion[] = [
   {
-    id: '1',
+    id: 'fallback-1',
     question: 'What consensus mechanism does Kaspa use?',
     options: [
       'Proof of Stake (PoS)',
@@ -20,8 +45,8 @@ const mockQuiz: QuizQuestion[] = [
     correctAnswer: 1,
   },
   {
-    id: '2',
-    question: 'What is the main advantage of Kaspa\'s blockDAG structure?',
+    id: 'fallback-2',
+    question: "What is the main advantage of Kaspa's blockDAG structure?",
     options: [
       'Lower energy consumption',
       'Higher throughput with parallel block creation',
@@ -31,29 +56,19 @@ const mockQuiz: QuizQuestion[] = [
     correctAnswer: 1,
   },
   {
-    id: '3',
+    id: 'fallback-3',
     question: 'What is the Kaspa block time?',
-    options: [
-      '10 minutes',
-      '1 minute',
-      '1 second',
-      '10 seconds',
-    ],
+    options: ['10 minutes', '1 minute', '1 second', '10 seconds'],
     correctAnswer: 2,
   },
   {
-    id: '4',
+    id: 'fallback-4',
     question: 'What protocol is used for tokens on Kaspa?',
-    options: [
-      'ERC-20',
-      'BRC-20',
-      'KRC-20 (Kasplex)',
-      'SPL',
-    ],
+    options: ['ERC-20', 'BRC-20', 'KRC-20 (Kasplex)', 'SPL'],
     correctAnswer: 2,
   },
   {
-    id: '5',
+    id: 'fallback-5',
     question: 'What does $BMT stand for?',
     options: [
       'Bitcoin Mining Token',
@@ -67,17 +82,35 @@ const mockQuiz: QuizQuestion[] = [
 
 export default function Quiz() {
   const [, setLocation] = useLocation();
+  const params = useParams();
+  const courseId = params.courseId || '1';
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [showResults, setShowResults] = useState(false);
   const [quizComplete, setQuizComplete] = useState(false);
 
+  const { data: courseData, isLoading, error } = useQuery<CourseWithDetails>({
+    queryKey: [`/api/courses/${courseId}`],
+  });
+
+  const displayQuestions = useMemo(() => {
+    if (courseData?.quiz?.questions && courseData.quiz.questions.length > 0) {
+      return courseData.quiz.questions.map((q, i) => mapToDisplayQuestion(q, i));
+    }
+    return fallbackQuestions;
+  }, [courseData]);
+
+  const courseName = courseData?.title || 'Course Quiz';
+  const bmtReward = courseData?.bmtReward ?? 500;
+
   const handleAnswer = (questionId: string, answer: number) => {
     setAnswers(prev => ({ ...prev, [questionId]: answer }));
-    
-    if (currentQuestion < mockQuiz.length - 1) {
+
+    if (currentQuestion < displayQuestions.length - 1) {
       setTimeout(() => {
         setCurrentQuestion(prev => prev + 1);
+        setShowResults(false);
       }, 1500);
     } else {
       setTimeout(() => {
@@ -96,14 +129,44 @@ export default function Quiz() {
 
   const calculateScore = () => {
     let correct = 0;
-    mockQuiz.forEach(q => {
+    displayQuestions.forEach(q => {
       if (answers[q.id] === q.correctAnswer) correct++;
     });
-    return { correct, total: mockQuiz.length, percentage: Math.round((correct / mockQuiz.length) * 100) };
+    return { 
+      correct, 
+      total: displayQuestions.length, 
+      percentage: displayQuestions.length > 0 ? Math.round((correct / displayQuestions.length) * 100) : 0
+    };
   };
 
   const score = calculateScore();
   const passed = score.percentage >= 70;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-quiz-loading">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading quiz...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-quiz-error">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <h2 className="font-heading font-bold text-xl text-white mb-2">Failed to Load Quiz</h2>
+          <p className="text-muted-foreground mb-6">We couldn't load the quiz. Please try again.</p>
+          <Button onClick={() => setLocation('/courses')} variant="outline">
+            Browse Courses
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (quizComplete) {
     return (
@@ -122,8 +185,8 @@ export default function Quiz() {
               </h1>
               <p className="text-muted-foreground mb-8">
                 {passed 
-                  ? 'You passed the quiz and earned your reward!'
-                  : 'You need 70% to pass. Try again!'}
+                  ? 'You passed the quiz and earned your $BMT reward!'
+                  : 'You need 70% to pass. Give it another try!'}
               </p>
 
               <div className={`text-6xl font-heading font-bold mb-4 ${
@@ -138,7 +201,7 @@ export default function Quiz() {
               {passed && (
                 <div className="bg-muted p-4 rounded-lg mb-8">
                   <p className="text-sm text-muted-foreground mb-1">Reward Earned</p>
-                  <p className="font-heading font-bold text-2xl text-bmt-orange">+500 $BMT</p>
+                  <p className="font-heading font-bold text-2xl text-bmt-orange">+{bmtReward.toLocaleString()} $BMT</p>
                 </div>
               )}
 
@@ -164,6 +227,23 @@ export default function Quiz() {
     );
   }
 
+  const currentQ = displayQuestions[currentQuestion];
+
+  if (!currentQ) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-quiz-no-questions">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h2 className="font-heading font-bold text-xl text-white mb-2">No Questions Available</h2>
+          <p className="text-muted-foreground mb-6">This quiz doesn't have any questions yet.</p>
+          <Button onClick={() => setLocation('/courses')} variant="outline">
+            Browse Courses
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen pt-20 pb-8" data-testid="page-quiz">
       <div className="max-w-2xl mx-auto px-4 sm:px-6">
@@ -172,32 +252,33 @@ export default function Quiz() {
             variant="ghost" 
             onClick={() => setLocation('/dashboard')}
             className="mb-4 text-muted-foreground"
+            data-testid="button-back-to-course"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Course
           </Button>
-          
-          <h1 className="font-heading font-bold text-2xl text-white mb-2">
-            Introduction to Kaspa Blockchain
+
+          <h1 className="font-heading font-bold text-2xl text-white mb-2" data-testid="text-quiz-title">
+            {courseName}
           </h1>
-          <p className="text-muted-foreground">Final Quiz - Pass with 70% to earn your certificate</p>
+          <p className="text-muted-foreground">Final Quiz - Pass with 70% to earn your $BMT reward</p>
         </div>
 
         <div className="mb-6">
           <div className="flex items-center justify-between text-sm mb-2">
             <span className="text-muted-foreground">Progress</span>
-            <span className="text-kaspa-cyan">{currentQuestion + 1} of {mockQuiz.length}</span>
+            <span className="text-kaspa-cyan" data-testid="text-quiz-progress">{currentQuestion + 1} of {displayQuestions.length}</span>
           </div>
-          <Progress value={((currentQuestion + 1) / mockQuiz.length) * 100} className="h-2" />
+          <Progress value={((currentQuestion + 1) / displayQuestions.length) * 100} className="h-2" />
         </div>
 
         <QuizCard
-          question={mockQuiz[currentQuestion]}
+          question={currentQ}
           questionNumber={currentQuestion + 1}
-          totalQuestions={mockQuiz.length}
+          totalQuestions={displayQuestions.length}
           onAnswer={handleAnswer}
-          showResult={showResults && answers[mockQuiz[currentQuestion].id] !== undefined}
-          selectedAnswer={answers[mockQuiz[currentQuestion].id]}
+          showResult={showResults && answers[currentQ.id] !== undefined}
+          selectedAnswer={answers[currentQ.id]}
         />
       </div>
     </div>

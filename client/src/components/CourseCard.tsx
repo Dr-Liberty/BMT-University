@@ -47,8 +47,9 @@ function capitalizeFirst(str: string): string {
 }
 
 export default function CourseCard({ course, enrolled, onEnroll, onContinue }: CourseCardProps) {
-  const difficulty = course.difficulty.toLowerCase();
+  const difficulty = (course.difficulty || 'beginner').toLowerCase();
   const difficultyClass = difficultyColors[difficulty] || difficultyColors.beginner;
+  const category = course.category || 'general';
 
   return (
     <Card 
@@ -67,10 +68,10 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
           className={`absolute top-3 right-3 ${difficultyClass}`}
           data-testid={`badge-difficulty-${course.id}`}
         >
-          {capitalizeFirst(course.difficulty)}
+          {capitalizeFirst(difficulty)}
         </Badge>
         <Badge className="absolute top-3 left-3 bg-background/80 backdrop-blur text-foreground">
-          {capitalizeFirst(course.category)}
+          {capitalizeFirst(category)}
         </Badge>
       </div>
 
@@ -89,7 +90,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
           </span>
           <span className="flex items-center gap-1">
             <Users className="w-4 h-4" />
-            {course.enrollmentCount.toLocaleString()}
+            {(course.enrollmentCount ?? 0).toLocaleString()}
           </span>
           {course.rating && (
             <span className="flex items-center gap-1 text-bmt-orange">
@@ -112,7 +113,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
 
       <CardFooter className="p-4 pt-0 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <span className="font-heading font-bold text-lg text-bmt-orange">{course.bmtReward.toLocaleString()}</span>
+          <span className="font-heading font-bold text-lg text-bmt-orange">{(course.bmtReward ?? 0).toLocaleString()}</span>
           <span className="text-sm text-muted-foreground">$BMT</span>
         </div>
         {enrolled ? (

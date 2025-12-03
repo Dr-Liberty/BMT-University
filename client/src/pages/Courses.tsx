@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import Footer from '@/components/Footer';
-import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2 } from 'lucide-react';
+import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import type { Course } from '@shared/schema';
 
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
@@ -34,7 +35,7 @@ export default function Courses() {
   const [difficulty, setDifficulty] = useState('All');
   const [filter, setFilter] = useState('all');
 
-  const { data: courses = [], isLoading } = useQuery<Course[]>({
+  const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
     queryKey: ['/api/courses'],
   });
 
@@ -142,7 +143,20 @@ export default function Courses() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin" />
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading courses...</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <h3 className="font-heading font-semibold text-xl text-white mb-2">Failed to load courses</h3>
+            <p className="text-muted-foreground mb-6">We couldn't fetch the course catalog. Please try again.</p>
+            <Button onClick={() => refetch()} variant="outline" className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </Button>
           </div>
         ) : (
           <>
