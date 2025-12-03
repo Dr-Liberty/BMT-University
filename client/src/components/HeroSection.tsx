@@ -1,25 +1,29 @@
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Wallet, BookOpen, Award, Coins } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { BookOpen, Award, Coins } from 'lucide-react';
+import { Link } from 'wouter';
 import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
 
-interface HeroStat {
-  icon: typeof Wallet;
-  value: string;
-  label: string;
+interface StatsData {
+  totalCourses: number;
+  totalStudents: number;
+  totalBmtDistributed: number;
 }
 
-// todo: remove mock functionality
-const heroStats: HeroStat[] = [
-  { icon: BookOpen, value: '24', label: 'Courses' },
-  { icon: Award, value: '1,247', label: 'Students' },
-  { icon: Coins, value: '2.4M', label: '$BMT Distributed' },
-];
-
-interface HeroSectionProps {
-  onConnectWallet?: () => void;
+function formatBmtAmount(amount: number): string {
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(1)}M`;
+  } else if (amount >= 1_000) {
+    return `${(amount / 1_000).toFixed(1)}K`;
+  }
+  return amount.toLocaleString();
 }
 
-export default function HeroSection({ onConnectWallet }: HeroSectionProps) {
+export default function HeroSection() {
+  const { data: stats, isLoading } = useQuery<StatsData>({
+    queryKey: ['/api/stats'],
+  });
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-16" data-testid="section-hero">
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/50 to-background pointer-events-none" />
@@ -47,36 +51,55 @@ export default function HeroSection({ onConnectWallet }: HeroSectionProps) {
           Complete lessons, pass quizzes, and earn <span className="text-bmt-orange font-semibold">$BMT tokens</span> on the Kaspa network.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-          <Button
-            size="lg"
-            onClick={onConnectWallet}
-            className="bg-gradient-to-r from-kaspa-cyan to-kaspa-green text-background font-heading uppercase tracking-wide px-8 gap-2"
-            data-testid="button-hero-connect"
-          >
-            <Wallet className="w-5 h-5" />
-            Connect Wallet
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="border-bmt-orange text-bmt-orange hover:bg-bmt-orange/10 font-heading uppercase tracking-wide px-8"
-            data-testid="button-hero-explore"
-          >
-            Explore Courses
-          </Button>
+        <div className="flex items-center justify-center mb-16">
+          <Link href="/courses">
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-kaspa-cyan to-kaspa-green text-background font-heading uppercase tracking-wide px-8 gap-2"
+              data-testid="button-hero-explore"
+            >
+              <BookOpen className="w-5 h-5" />
+              Explore Courses
+            </Button>
+          </Link>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
-          {heroStats.map((stat, index) => (
-            <div key={index} className="text-center" data-testid={`stat-hero-${stat.label.toLowerCase().replace(' ', '-')}`}>
-              <div className="flex items-center justify-center mb-2">
-                <stat.icon className="w-6 h-6 text-kaspa-cyan mr-2" />
-                <span className="font-heading font-bold text-3xl text-white">{stat.value}</span>
-              </div>
-              <span className="text-sm text-muted-foreground uppercase tracking-wide">{stat.label}</span>
+          <div className="text-center" data-testid="stat-hero-courses">
+            <div className="flex items-center justify-center mb-2">
+              <BookOpen className="w-6 h-6 text-kaspa-cyan mr-2" />
+              {isLoading ? (
+                <Skeleton className="h-9 w-12" />
+              ) : (
+                <span className="font-heading font-bold text-3xl text-white">{stats?.totalCourses ?? 0}</span>
+              )}
             </div>
-          ))}
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">Courses</span>
+          </div>
+          
+          <div className="text-center" data-testid="stat-hero-students">
+            <div className="flex items-center justify-center mb-2">
+              <Award className="w-6 h-6 text-kaspa-cyan mr-2" />
+              {isLoading ? (
+                <Skeleton className="h-9 w-16" />
+              ) : (
+                <span className="font-heading font-bold text-3xl text-white">{stats?.totalStudents?.toLocaleString() ?? 0}</span>
+              )}
+            </div>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">Students</span>
+          </div>
+          
+          <div className="text-center" data-testid="stat-hero-bmt-distributed">
+            <div className="flex items-center justify-center mb-2">
+              <Coins className="w-6 h-6 text-kaspa-cyan mr-2" />
+              {isLoading ? (
+                <Skeleton className="h-9 w-20" />
+              ) : (
+                <span className="font-heading font-bold text-3xl text-white">{formatBmtAmount(stats?.totalBmtDistributed ?? 0)}</span>
+              )}
+            </div>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">$BMT Distributed</span>
+          </div>
         </div>
       </div>
     </section>
