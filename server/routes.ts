@@ -570,13 +570,36 @@ export async function registerRoutes(
   app.get("/api/stats", async (req, res) => {
     try {
       const courses = await storage.getAllCourses({ isPublished: true });
-      const totalStudents = courses.reduce((sum, c) => sum + c.enrollmentCount, 0);
-      const totalRewards = courses.reduce((sum, c) => sum + (c.bmtReward * c.enrollmentCount), 0);
+      const allRewards = await storage.getAllRewards();
+      const allCertificates = await storage.getAllCertificates();
+      const allQuizAttempts = await storage.getAllQuizAttempts();
+      
+      const totalEnrollments = courses.reduce((sum, c) => sum + c.enrollmentCount, 0);
+      const uniqueStudents = new Set(allCertificates.map(c => c.userId)).size;
+      
+      const totalBmtDistributed = allRewards
+        .filter(r => r.status === 'confirmed')
+        .reduce((sum, r) => sum + r.amount, 0);
+      const pendingBmt = allRewards
+        .filter(r => r.status === 'pending')
+        .reduce((sum, r) => sum + r.amount, 0);
+      
+      const avgQuizScore = allQuizAttempts.length > 0
+        ? Math.round(allQuizAttempts.reduce((sum, q) => sum + q.score, 0) / allQuizAttempts.length)
+        : 0;
+      
+      const completionRate = totalEnrollments > 0
+        ? Math.min(100, Math.round((allCertificates.length / totalEnrollments) * 100))
+        : 0;
       
       res.json({
         totalCourses: courses.length,
-        totalStudents,
-        totalBmtDistributed: totalRewards,
+        totalStudents: totalEnrollments,
+        totalBmtDistributed,
+        pendingBmt,
+        certificatesIssued: allCertificates.length,
+        completionRate,
+        avgQuizScore,
         averageRating: courses.length > 0 
           ? (courses.reduce((sum, c) => sum + (parseFloat(c.rating || '0')), 0) / courses.length).toFixed(1)
           : '0',
@@ -584,6 +607,91 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching stats:", error);
       res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+  app.get("/api/analytics/leaderboard", async (req, res) => {
+    try {
+      const courses = await storage.getAllCourses({ isPublished: true });
+      const allRewards = await storage.getAllRewards();
+      const allCertificates = await storage.getAllCertificates();
+      
+      const leaderboard = courses
+        .map(course => {
+          const courseCertificates = allCertificates.filter(c => c.courseId === course.id);
+          const courseRewards = allRewards.filter(r => r.courseId === course.id && r.status === 'confirmed');
+          const totalBmtPaid = courseRewards.reduce((sum, r) => sum + r.amount, 0);
+          const pendingRewards = allRewards.filter(r => r.courseId === course.id && r.status === 'pending');
+          
+          return {
+            id: course.id,
+            title: course.title,
+            category: course.category,
+            enrollmentCount: course.enrollmentCount,
+            completions: courseCertificates.length,
+            totalBmtPaid,
+            pendingBmt: pendingRewards.reduce((sum, r) => sum + r.amount, 0),
+            rating: course.rating,
+          };
+        })
+        .sort((a, b) => b.enrollmentCount - a.enrollmentCount)
+        .slice(0, 10);
+      
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ error: "Failed to fetch leaderboard" });
+    }
+  });
+
+  app.get("/api/analytics/activity", async (req, res) => {
+    try {
+      const allRewards = await storage.getAllRewards();
+      const allCertificates = await storage.getAllCertificates();
+      const courses = await storage.getAllCourses({ isPublished: true });
+      const allCourses = await storage.getAllCourses({});
+      
+      const activities: Array<{
+        id: string;
+        type: 'reward_claimed' | 'certificate_issued' | 'course_completed';
+        description: string;
+        amount?: number;
+        timestamp: Date;
+      }> = [];
+      
+      allRewards
+        .filter(r => r.status === 'confirmed' && r.processedAt)
+        .forEach(r => {
+          const course = allCourses.find(c => c.id === r.courseId);
+          const courseName = course?.title || 'a completed course';
+          activities.push({
+            id: r.id,
+            type: 'reward_claimed',
+            description: `Claimed ${r.amount} $BMT for ${courseName}`,
+            amount: r.amount,
+            timestamp: r.processedAt!,
+          });
+        });
+      
+      allCertificates.forEach(c => {
+        const course = allCourses.find(co => co.id === c.courseId);
+        const courseName = course?.title || 'a completed course';
+        activities.push({
+          id: c.id,
+          type: 'certificate_issued',
+          description: `Certificate issued for ${courseName}`,
+          timestamp: c.issuedAt!,
+        });
+      });
+      
+      const sortedActivities = activities
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 20);
+      
+      res.json(sortedActivities);
+    } catch (error) {
+      console.error("Error fetching activity:", error);
+      res.status(500).json({ error: "Failed to fetch activity" });
     }
   });
 

@@ -53,16 +53,19 @@ export interface IStorage {
   
   // Quiz Attempts
   getQuizAttempts(userId: string, quizId: string): Promise<QuizAttempt[]>;
+  getAllQuizAttempts(): Promise<QuizAttempt[]>;
   createQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt>;
   
   // Certificates
   getCertificate(id: string): Promise<Certificate | undefined>;
   getCertificatesByUser(userId: string): Promise<Certificate[]>;
+  getAllCertificates(): Promise<Certificate[]>;
   getCertificateByVerificationCode(code: string): Promise<Certificate | undefined>;
   createCertificate(certificate: InsertCertificate): Promise<Certificate>;
   
   // Rewards
   getRewardsByUser(userId: string): Promise<Reward[]>;
+  getAllRewards(): Promise<Reward[]>;
   createReward(reward: InsertReward): Promise<Reward>;
   updateReward(id: string, data: Partial<Reward>): Promise<Reward | undefined>;
   
@@ -584,6 +587,11 @@ export class MemStorage implements IStorage {
       .sort((a, b) => new Date(b.startedAt!).getTime() - new Date(a.startedAt!).getTime());
   }
 
+  async getAllQuizAttempts(): Promise<QuizAttempt[]> {
+    return Array.from(this.quizAttempts.values())
+      .sort((a, b) => new Date(b.startedAt!).getTime() - new Date(a.startedAt!).getTime());
+  }
+
   async createQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt> {
     const id = randomUUID();
     const newAttempt: QuizAttempt = {
@@ -603,6 +611,10 @@ export class MemStorage implements IStorage {
 
   async getCertificatesByUser(userId: string): Promise<Certificate[]> {
     return Array.from(this.certificates.values()).filter(c => c.userId === userId);
+  }
+
+  async getAllCertificates(): Promise<Certificate[]> {
+    return Array.from(this.certificates.values());
   }
 
   async getCertificateByVerificationCode(code: string): Promise<Certificate | undefined> {
@@ -628,6 +640,11 @@ export class MemStorage implements IStorage {
   async getRewardsByUser(userId: string): Promise<Reward[]> {
     return Array.from(this.rewards.values())
       .filter(r => r.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getAllRewards(): Promise<Reward[]> {
+    return Array.from(this.rewards.values())
       .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
   }
 
