@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
 
 // Network configuration - toggle between testnet and mainnet
-const USE_TESTNET = process.env.KASPLEX_NETWORK !== 'mainnet';
+// Default to mainnet for production use with real BMT token
+const USE_TESTNET = process.env.KASPLEX_NETWORK === 'testnet';
 
 const NETWORKS = {
   testnet: {
