@@ -334,11 +334,25 @@ export async function registerRoutes(
     return req.ip || req.connection?.remoteAddress || 'unknown';
   }
 
-  // Helper function to create fingerprint hash from various signals
+  // Helper function to create deterministic fingerprint hash from device signals
   function createFingerprintHash(data: { userAgent?: string; screenResolution?: string; timezone?: string; language?: string; platform?: string }): string {
-    const crypto = require('crypto');
     const str = `${data.userAgent || ''}|${data.screenResolution || ''}|${data.timezone || ''}|${data.language || ''}|${data.platform || ''}`;
-    return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
+    // Use same algorithm as frontend for consistency
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36).padStart(12, '0');
+  }
+
+  // Helper to normalize IP addresses (strip IPv6 prefix for IPv4-mapped addresses)
+  function normalizeIp(ip: string): string {
+    if (ip.startsWith('::ffff:')) {
+      return ip.substring(7);
+    }
+    return ip;
   }
 
   app.post("/api/quizzes/:quizId/submit", authMiddleware, async (req: any, res) => {
@@ -368,12 +382,13 @@ export async function registerRoutes(
       }
 
       // ============ ANTI-ABUSE CHECK 2: Device/IP fingerprinting ============
-      const clientIp = getClientIp(req);
+      const rawIp = getClientIp(req);
+      const clientIp = normalizeIp(rawIp);
       const userAgent = req.headers['user-agent'] || '';
       const fingerprintData = result.data.fingerprint;
       
-      // Create or use provided fingerprint hash
-      const fingerprintHash = fingerprintData?.hash || createFingerprintHash({
+      // Always compute server-side hash for consistency (don't trust client hash)
+      const fingerprintHash = createFingerprintHash({
         userAgent,
         screenResolution: fingerprintData?.screenResolution,
         timezone: fingerprintData?.timezone,

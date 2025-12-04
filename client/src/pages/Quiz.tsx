@@ -56,8 +56,7 @@ function getDeviceFingerprint(): { hash: string; screenResolution: string; timez
     hash = hash & hash;
   }
   
-  const hashStr = Math.abs(hash).toString(16).padStart(8, '0') + 
-                  Date.now().toString(16).slice(-8);
+  const hashStr = Math.abs(hash).toString(36).padStart(12, '0');
   
   return {
     hash: hashStr,
