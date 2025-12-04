@@ -76,6 +76,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
     maxAttempts: 3,
     shuffleQuestions: false,
     showCorrectAnswers: true,
+    isPublished: false,
   });
   const [questionForm, setQuestionForm] = useState<QuestionFormData>(defaultQuestion);
 
@@ -199,7 +200,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'quizzes'] });
       setQuizDialogOpen(false);
-      setQuizForm({ title: '', description: '', passingScore: 70, timeLimit: 600, maxAttempts: 3, shuffleQuestions: false, showCorrectAnswers: true });
+      setQuizForm({ title: '', description: '', passingScore: 70, timeLimit: 600, maxAttempts: 3, shuffleQuestions: false, showCorrectAnswers: true, isPublished: false });
       toast({ title: "Quiz created" });
     },
     onError: (error: any) => {
@@ -319,10 +320,11 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
         maxAttempts: quiz.maxAttempts || 3,
         shuffleQuestions: quiz.shuffleQuestions,
         showCorrectAnswers: quiz.showCorrectAnswers,
+        isPublished: quiz.isPublished,
       });
     } else {
       setEditingQuiz(null);
-      setQuizForm({ title: '', description: '', passingScore: 70, timeLimit: 600, maxAttempts: 3, shuffleQuestions: false, showCorrectAnswers: true });
+      setQuizForm({ title: '', description: '', passingScore: 70, timeLimit: 600, maxAttempts: 3, shuffleQuestions: false, showCorrectAnswers: true, isPublished: false });
     }
     setQuizDialogOpen(true);
   };
@@ -944,7 +946,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
                 />
               </div>
             </div>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-6 flex-wrap">
               <div className="flex items-center gap-2">
                 <Switch
                   id="shuffle"
@@ -960,6 +962,15 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
                   onCheckedChange={(checked) => setQuizForm({ ...quizForm, showCorrectAnswers: checked })}
                 />
                 <Label htmlFor="showAnswers">Show correct answers after</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="publish"
+                  checked={quizForm.isPublished}
+                  onCheckedChange={(checked) => setQuizForm({ ...quizForm, isPublished: checked })}
+                  data-testid="switch-quiz-publish"
+                />
+                <Label htmlFor="publish" className="font-medium text-kaspa-cyan">Publish Quiz</Label>
               </div>
             </div>
           </div>
