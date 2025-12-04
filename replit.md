@@ -74,11 +74,35 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `DELETE /api/courses/:id` - Delete course
 - `GET /api/courses/:id/lessons` - Get lessons for a course
 - `GET /api/courses/:id/quiz` - Get quiz for a course
+- `GET /api/courses/:courseId/modules` - Get modules for a course
+
+**Module Endpoints (Admin/Instructor):**
+- `POST /api/courses/:courseId/modules` - Create module
+- `PUT /api/modules/:id` - Update module
+- `DELETE /api/modules/:id` - Delete module
+- `POST /api/modules/reorder` - Reorder modules
+
+**Lesson Endpoints (Admin/Instructor):**
+- `POST /api/modules/:moduleId/lessons` - Create lesson in module
+- `POST /api/courses/:courseId/lessons` - Create lesson (unassigned)
+- `PUT /api/lessons/:id` - Update lesson
+- `DELETE /api/lessons/:id` - Delete lesson
+- `POST /api/lessons/reorder` - Reorder lessons
+- `POST /api/lessons/:id/complete` - Mark lesson complete (student)
 
 **Quiz Endpoints:**
 - `GET /api/quizzes/:id` - Get quiz details
 - `GET /api/quizzes/:id/questions` - Get quiz questions
 - `POST /api/quizzes/:quizId/attempt` - Submit quiz attempt
+- `POST /api/courses/:courseId/quiz` - Create quiz for course
+- `PUT /api/quizzes/:id` - Update quiz
+- `DELETE /api/quizzes/:id` - Delete quiz
+
+**Quiz Question Endpoints (Admin/Instructor):**
+- `POST /api/quizzes/:quizId/questions` - Create question
+- `PUT /api/questions/:id` - Update question
+- `DELETE /api/questions/:id` - Delete question
+- `POST /api/questions/reorder` - Reorder questions
 
 **Enrollment Endpoints:**
 - `GET /api/users/:userId/enrollments` - Get user enrollments
@@ -131,13 +155,28 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `enrollmentCount`, `rating`
 - `createdAt`, `updatedAt`
 
+**Modules Table (Moodle-style course organization):**
+- `id` (uuid, primary key)
+- `courseId` (foreign key)
+- `title`, `description` (optional)
+- `orderIndex` (integer)
+- `createdAt`, `updatedAt`
+
 **Lessons Table:**
 - `id` (uuid, primary key)
 - `courseId` (foreign key)
+- `moduleId` (foreign key, optional) - Links lesson to a module
 - `title`, `content`
 - `videoUrl` (optional)
 - `orderIndex` (integer)
 - `duration` (integer, minutes)
+- `contentBlocks` (jsonb) - Rich content blocks (text, video, image)
+
+**Lesson Progress Table:**
+- `id` (uuid, primary key)
+- `lessonId`, `userId` (foreign keys)
+- `completed` (boolean)
+- `completedAt` (timestamp)
 
 **Quizzes Table:**
 - `id` (uuid, primary key)
@@ -151,9 +190,11 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `id` (uuid, primary key)
 - `quizId` (foreign key)
 - `question` (text)
+- `questionType` (enum: single_choice, multi_select, true_false, short_answer) - Enhanced question types
 - `options` (jsonb array of {text, isCorrect})
 - `explanation` (optional)
 - `orderIndex` (integer)
+- `points` (integer, default 1)
 
 **Enrollments Table:**
 - `id` (uuid, primary key)
@@ -216,6 +257,7 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 - `client/src/components/RewardHistory.tsx` - Reward claim interface
 - `client/src/components/Navbar.tsx` - Navigation with wallet connect
 - `client/src/components/HeroSection.tsx` - Landing hero with blockdag animation
+- `client/src/components/CourseBuilder.tsx` - Admin course builder with modules, lessons, and quiz management
 
 **Authentication:**
 - `client/src/lib/auth.ts` - Wallet connection and auth state management
