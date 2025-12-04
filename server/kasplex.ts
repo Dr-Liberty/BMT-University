@@ -293,23 +293,57 @@ export async function estimateTransferGas(
   }
 
   try {
-    const rpcProvider = getProvider();
-    const wallet = new ethers.Wallet(privateKey, rpcProvider);
-    const contract = new ethers.Contract(tokenContract, ERC20_ABI, wallet);
+    // Use raw RPC call for Kasplex compatibility
+    const wallet = new ethers.Wallet(privateKey);
+    const iface = new ethers.Interface(ERC20_ABI);
+    const data = iface.encodeFunctionData('transfer', [toAddress, BigInt(amount)]);
     
-    const gasEstimate = await contract.transfer.estimateGas(toAddress, BigInt(amount));
-    return gasEstimate.toString();
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_estimateGas',
+        params: [{
+          from: wallet.address,
+          to: tokenContract,
+          data: data,
+        }],
+        id: 1,
+      }),
+    });
+    
+    const result = await response.json();
+    if (result.result) {
+      return BigInt(result.result).toString();
+    }
+    // Default to 100000 if estimation fails
+    return '100000';
   } catch (error) {
     console.error('Gas estimation failed:', error);
-    return null;
+    return '100000'; // Default gas limit
   }
 }
 
 export async function getNativeBalance(walletAddress: string): Promise<string | null> {
   try {
-    const rpcProvider = getProvider();
-    const balance = await rpcProvider.getBalance(walletAddress);
-    return balance.toString();
+    // Use raw RPC call for Kasplex compatibility
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [walletAddress, 'latest'],
+        id: 1,
+      }),
+    });
+    
+    const data = await response.json();
+    if (data.result) {
+      return BigInt(data.result).toString();
+    }
+    return null;
   } catch (error) {
     console.error('Error fetching native balance:', error);
     return null;
