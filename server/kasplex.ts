@@ -117,7 +117,12 @@ export async function transferERC20(
     console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
     console.log(`  From: ${wallet.address}`);
     
-    const tx = await contract.transfer(toAddress, amountBigInt);
+    // Get nonce manually using "latest" instead of "pending" (Kasplex RPC doesn't support "pending")
+    const nonce = await rpcProvider.getTransactionCount(wallet.address, 'latest');
+    console.log(`  Nonce: ${nonce}`);
+    
+    // Send transaction with explicit nonce
+    const tx = await contract.transfer(toAddress, amountBigInt, { nonce });
     console.log(`Transaction submitted: ${tx.hash}`);
     
     const receipt = await tx.wait();
