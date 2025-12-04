@@ -2008,5 +2008,347 @@ export async function registerRoutes(
     }
   });
 
+  // ============ REFERRAL PROGRAM ============
+  
+  // Generate unique referral code for user
+  function generateReferralCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude confusing chars like I, O, 1, 0
+    let code = 'BMT-';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+  
+  // Get referral settings (public - to show on dashboard)
+  app.get("/api/referrals/settings", async (req, res) => {
+    try {
+      let settings = await storage.getReferralSettings();
+      
+      // If no settings exist, create default
+      if (!settings) {
+        settings = await storage.updateReferralSettings({
+          isEnabled: true,
+          referrerRewardAmount: 100,
+          refereeRewardAmount: 50,
+          triggerAction: 'enrollment',
+        });
+      }
+      
+      // Only return public-safe fields
+      res.json({
+        isEnabled: settings.isEnabled,
+        referrerRewardAmount: settings.referrerRewardAmount,
+        refereeRewardAmount: settings.refereeRewardAmount,
+        triggerAction: settings.triggerAction,
+      });
+    } catch (error) {
+      console.error("Error fetching referral settings:", error);
+      res.status(500).json({ error: "Failed to fetch referral settings" });
+    }
+  });
+  
+  // Admin: Get full referral settings
+  app.get("/api/admin/referrals/settings", adminMiddleware, async (req: any, res) => {
+    try {
+      let settings = await storage.getReferralSettings();
+      
+      if (!settings) {
+        settings = await storage.updateReferralSettings({
+          isEnabled: true,
+          referrerRewardAmount: 100,
+          refereeRewardAmount: 50,
+          triggerAction: 'enrollment',
+        });
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching referral settings:", error);
+      res.status(500).json({ error: "Failed to fetch referral settings" });
+    }
+  });
+  
+  // Admin: Update referral settings
+  app.put("/api/admin/referrals/settings", adminMiddleware, async (req: any, res) => {
+    try {
+      const { isEnabled, referrerRewardAmount, refereeRewardAmount, triggerAction, maxReferralsPerUser, codeExpirationDays } = req.body;
+      
+      const settings = await storage.updateReferralSettings({
+        isEnabled,
+        referrerRewardAmount,
+        refereeRewardAmount,
+        triggerAction,
+        maxReferralsPerUser,
+        codeExpirationDays,
+      });
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error updating referral settings:", error);
+      res.status(500).json({ error: "Failed to update referral settings" });
+    }
+  });
+  
+  // Get or create user's referral code
+  app.get("/api/referrals/my-code", authMiddleware, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      let referralCode = await storage.getReferralCode(userId);
+      
+      // Create a new code if user doesn't have one
+      if (!referralCode) {
+        const settings = await storage.getReferralSettings();
+        const expiresAt = settings?.codeExpirationDays
+          ? new Date(Date.now() + settings.codeExpirationDays * 24 * 60 * 60 * 1000)
+          : undefined;
+        
+        // Generate unique code
+        let code = generateReferralCode();
+        let attempts = 0;
+        while (await storage.getReferralCodeByCode(code) && attempts < 10) {
+          code = generateReferralCode();
+          attempts++;
+        }
+        
+        referralCode = await storage.createReferralCode({
+          userId,
+          code,
+          isActive: true,
+          expiresAt,
+        });
+      }
+      
+      // Build shareable link
+      const baseUrl = req.headers.origin || `https://${req.headers.host}`;
+      const shareLink = `${baseUrl}?ref=${referralCode.code}`;
+      
+      res.json({
+        ...referralCode,
+        shareLink,
+      });
+    } catch (error) {
+      console.error("Error fetching referral code:", error);
+      res.status(500).json({ error: "Failed to fetch referral code" });
+    }
+  });
+  
+  // Get user's referral stats
+  app.get("/api/referrals/stats", authMiddleware, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const stats = await storage.getReferralStats(userId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching referral stats:", error);
+      res.status(500).json({ error: "Failed to fetch referral stats" });
+    }
+  });
+  
+  // Get user's referrals list
+  app.get("/api/referrals/list", authMiddleware, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const referralsList = await storage.getReferralsByReferrer(userId);
+      
+      // Get referred user info for each referral
+      const referralsWithUsers = await Promise.all(referralsList.map(async (referral) => {
+        const referredUser = await storage.getUser(referral.referredUserId);
+        return {
+          ...referral,
+          referredUser: referredUser ? {
+            displayName: referredUser.displayName,
+            walletAddress: referredUser.walletAddress?.slice(0, 6) + '...' + referredUser.walletAddress?.slice(-4),
+          } : null,
+        };
+      }));
+      
+      res.json(referralsWithUsers);
+    } catch (error) {
+      console.error("Error fetching referrals list:", error);
+      res.status(500).json({ error: "Failed to fetch referrals list" });
+    }
+  });
+  
+  // Validate a referral code (used during signup)
+  app.get("/api/referrals/validate/:code", async (req, res) => {
+    try {
+      const { code } = req.params;
+      const referralCode = await storage.getReferralCodeByCode(code);
+      
+      if (!referralCode) {
+        return res.status(404).json({ valid: false, error: "Invalid referral code" });
+      }
+      
+      if (!referralCode.isActive) {
+        return res.status(400).json({ valid: false, error: "Referral code is no longer active" });
+      }
+      
+      if (referralCode.expiresAt && new Date() > referralCode.expiresAt) {
+        return res.status(400).json({ valid: false, error: "Referral code has expired" });
+      }
+      
+      const settings = await storage.getReferralSettings();
+      if (settings?.maxReferralsPerUser && referralCode.useCount >= settings.maxReferralsPerUser) {
+        return res.status(400).json({ valid: false, error: "Referral code has reached its limit" });
+      }
+      
+      // Get referrer info
+      const referrer = await storage.getUser(referralCode.userId);
+      
+      res.json({
+        valid: true,
+        referrerName: referrer?.displayName || `User ${referralCode.userId.slice(0, 8)}`,
+        bonusAmount: settings?.refereeRewardAmount || 50,
+      });
+    } catch (error) {
+      console.error("Error validating referral code:", error);
+      res.status(500).json({ error: "Failed to validate referral code" });
+    }
+  });
+  
+  // Apply a referral code to the current user
+  app.post("/api/referrals/apply", authMiddleware, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { code } = req.body;
+      
+      if (!code) {
+        return res.status(400).json({ error: "Referral code required" });
+      }
+      
+      // Check if user was already referred
+      const existingReferral = await storage.getReferralByReferredUser(userId);
+      if (existingReferral) {
+        return res.status(400).json({ error: "You have already been referred" });
+      }
+      
+      const referralCode = await storage.getReferralCodeByCode(code);
+      if (!referralCode) {
+        return res.status(404).json({ error: "Invalid referral code" });
+      }
+      
+      if (referralCode.userId === userId) {
+        return res.status(400).json({ error: "You cannot use your own referral code" });
+      }
+      
+      if (!referralCode.isActive) {
+        return res.status(400).json({ error: "Referral code is no longer active" });
+      }
+      
+      if (referralCode.expiresAt && new Date() > referralCode.expiresAt) {
+        return res.status(400).json({ error: "Referral code has expired" });
+      }
+      
+      const settings = await storage.getReferralSettings();
+      if (!settings?.isEnabled) {
+        return res.status(400).json({ error: "Referral program is currently disabled" });
+      }
+      
+      if (settings.maxReferralsPerUser && referralCode.useCount >= settings.maxReferralsPerUser) {
+        return res.status(400).json({ error: "Referral code has reached its limit" });
+      }
+      
+      // Create the referral record
+      const referral = await storage.createReferral({
+        referrerId: referralCode.userId,
+        referredUserId: userId,
+        referralCodeId: referralCode.id,
+      });
+      
+      // Increment the use count
+      await storage.incrementReferralCodeUseCount(referralCode.id);
+      
+      // If trigger is 'enrollment', check immediately for existing enrollments
+      if (settings.triggerAction === 'enrollment') {
+        const enrollments = await storage.getEnrollmentsByUser(userId);
+        if (enrollments.length > 0) {
+          // User already enrolled in at least one course - qualify and reward
+          await processReferralQualification(referral.id, 'enrollment', settings);
+        }
+      }
+      
+      res.json({ success: true, referral });
+    } catch (error) {
+      console.error("Error applying referral code:", error);
+      res.status(500).json({ error: "Failed to apply referral code" });
+    }
+  });
+  
+  // Helper function to process referral qualification
+  async function processReferralQualification(
+    referralId: string, 
+    action: string,
+    settings: Awaited<ReturnType<typeof storage.getReferralSettings>>
+  ) {
+    if (!settings) return;
+    
+    const referral = await storage.getReferral(referralId, '');
+    
+    // Get the actual referral by ID (since getReferral takes different params)
+    const allReferralsForReferrer = await storage.getReferralsByReferrer('*');
+    // This is a workaround - let's update the referral directly
+    
+    // Actually, let's use updateReferral directly with the ID
+    const updatedReferral = await storage.updateReferral(referralId, {
+      status: 'qualified',
+      qualifyingAction: action,
+      qualifiedAt: new Date(),
+    });
+    
+    if (!updatedReferral) return;
+    
+    // Create reward for the referrer
+    const referrerReward = await storage.createReward({
+      userId: updatedReferral.referrerId,
+      amount: settings.referrerRewardAmount,
+      type: 'referral_bonus',
+    });
+    
+    // Create reward for the referee (new user)
+    const refereeReward = await storage.createReward({
+      userId: updatedReferral.referredUserId,
+      amount: settings.refereeRewardAmount,
+      type: 'referral_welcome_bonus',
+    });
+    
+    // Update referral with reward IDs and mark as rewarded
+    await storage.updateReferral(referralId, {
+      status: 'rewarded',
+      referrerRewardId: referrerReward.id,
+      refereeRewardId: refereeReward.id,
+    });
+    
+    console.log(`[Referral] Processed referral ${referralId}: Referrer reward ${referrerReward.id}, Referee reward ${refereeReward.id}`);
+  }
+  
+  // Admin: Get all referrals overview
+  app.get("/api/admin/referrals", adminMiddleware, async (req: any, res) => {
+    try {
+      // Get all referral codes and their stats
+      const allRewards = await storage.getAllRewards();
+      const referralRewards = allRewards.filter(r => 
+        r.type === 'referral_bonus' || r.type === 'referral_welcome_bonus'
+      );
+      
+      const totalReferralRewardsPaid = referralRewards
+        .filter(r => r.status === 'confirmed')
+        .reduce((sum, r) => sum + r.amount, 0);
+      
+      const pendingReferralRewards = referralRewards
+        .filter(r => r.status === 'pending')
+        .reduce((sum, r) => sum + r.amount, 0);
+      
+      res.json({
+        totalReferralRewardsPaid,
+        pendingReferralRewards,
+        totalReferralRewards: referralRewards.length,
+      });
+    } catch (error) {
+      console.error("Error fetching admin referral stats:", error);
+      res.status(500).json({ error: "Failed to fetch referral stats" });
+    }
+  });
+
   return httpServer;
 }
