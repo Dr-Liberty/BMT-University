@@ -14,12 +14,16 @@ import {
   type PaymasterConfig, type InsertPaymasterConfig, type UpdatePaymasterConfig,
   type PayoutTransaction, type InsertPayoutTransaction,
   type DeviceFingerprint, type SuspiciousActivity, type InsertSuspiciousActivity,
+  type ReferralSettings, type UpdateReferralSettings,
+  type ReferralCode, type InsertReferralCode,
+  type Referral, type InsertReferral,
   users, courses, modules, lessons, lessonProgress,
   quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
   aboutPages, authNonces, authSessions,
   paymasterConfig, payoutTransactions,
   deviceFingerprints, suspiciousActivity,
+  referralSettings, referralCodes, referrals,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -144,6 +148,22 @@ export interface IStorage {
   logSuspiciousActivity(activity: InsertSuspiciousActivity): Promise<SuspiciousActivity>;
   getSuspiciousActivityByUser(userId: string): Promise<SuspiciousActivity[]>;
   getSuspiciousActivityByFingerprint(fingerprintHash: string): Promise<SuspiciousActivity[]>;
+  
+  // Referral program methods
+  getReferralSettings(): Promise<ReferralSettings | undefined>;
+  updateReferralSettings(data: UpdateReferralSettings): Promise<ReferralSettings>;
+  
+  getReferralCode(userId: string): Promise<ReferralCode | undefined>;
+  getReferralCodeByCode(code: string): Promise<ReferralCode | undefined>;
+  createReferralCode(data: InsertReferralCode): Promise<ReferralCode>;
+  incrementReferralCodeUseCount(codeId: string): Promise<void>;
+  
+  getReferral(referrerId: string, referredUserId: string): Promise<Referral | undefined>;
+  getReferralsByReferrer(referrerId: string): Promise<Referral[]>;
+  getReferralByReferredUser(referredUserId: string): Promise<Referral | undefined>;
+  createReferral(data: InsertReferral): Promise<Referral>;
+  updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined>;
+  getReferralStats(userId: string): Promise<{ totalReferrals: number; pendingReferrals: number; qualifiedReferrals: number; rewardedReferrals: number; totalBmtEarned: number }>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -935,6 +955,115 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(suspiciousActivity)
       .where(eq(suspiciousActivity.fingerprintHash, fingerprintHash))
       .orderBy(desc(suspiciousActivity.createdAt));
+  }
+
+  // Referral program methods
+  async getReferralSettings(): Promise<ReferralSettings | undefined> {
+    const [settings] = await db.select().from(referralSettings).limit(1);
+    return settings || undefined;
+  }
+
+  async updateReferralSettings(data: UpdateReferralSettings): Promise<ReferralSettings> {
+    const existing = await this.getReferralSettings();
+    if (existing) {
+      const [updated] = await db.update(referralSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(referralSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    // Create default settings with updates applied
+    const [newSettings] = await db.insert(referralSettings)
+      .values({
+        isEnabled: data.isEnabled ?? true,
+        rewardAmount: data.rewardAmount ?? 100,
+        triggerAction: data.triggerAction ?? 'enrollment',
+        referrerRewardAmount: data.referrerRewardAmount ?? 100,
+        refereeRewardAmount: data.refereeRewardAmount ?? 50,
+        maxReferralsPerUser: data.maxReferralsPerUser ?? null,
+        codeExpirationDays: data.codeExpirationDays ?? null,
+      })
+      .returning();
+    return newSettings;
+  }
+
+  async getReferralCode(userId: string): Promise<ReferralCode | undefined> {
+    const [code] = await db.select().from(referralCodes)
+      .where(and(eq(referralCodes.userId, userId), eq(referralCodes.isActive, true)));
+    return code || undefined;
+  }
+
+  async getReferralCodeByCode(code: string): Promise<ReferralCode | undefined> {
+    const [referralCode] = await db.select().from(referralCodes)
+      .where(eq(referralCodes.code, code));
+    return referralCode || undefined;
+  }
+
+  async createReferralCode(data: InsertReferralCode): Promise<ReferralCode> {
+    const [code] = await db.insert(referralCodes).values(data).returning();
+    return code;
+  }
+
+  async incrementReferralCodeUseCount(codeId: string): Promise<void> {
+    await db.update(referralCodes)
+      .set({ useCount: sql`${referralCodes.useCount} + 1` })
+      .where(eq(referralCodes.id, codeId));
+  }
+
+  async getReferral(referrerId: string, referredUserId: string): Promise<Referral | undefined> {
+    const [referral] = await db.select().from(referrals)
+      .where(and(eq(referrals.referrerId, referrerId), eq(referrals.referredUserId, referredUserId)));
+    return referral || undefined;
+  }
+
+  async getReferralsByReferrer(referrerId: string): Promise<Referral[]> {
+    return db.select().from(referrals)
+      .where(eq(referrals.referrerId, referrerId))
+      .orderBy(desc(referrals.createdAt));
+  }
+
+  async getReferralByReferredUser(referredUserId: string): Promise<Referral | undefined> {
+    const [referral] = await db.select().from(referrals)
+      .where(eq(referrals.referredUserId, referredUserId));
+    return referral || undefined;
+  }
+
+  async createReferral(data: InsertReferral): Promise<Referral> {
+    const [referral] = await db.insert(referrals).values(data).returning();
+    return referral;
+  }
+
+  async updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined> {
+    const [referral] = await db.update(referrals)
+      .set(data)
+      .where(eq(referrals.id, id))
+      .returning();
+    return referral || undefined;
+  }
+
+  async getReferralStats(userId: string): Promise<{ totalReferrals: number; pendingReferrals: number; qualifiedReferrals: number; rewardedReferrals: number; totalBmtEarned: number }> {
+    const userReferrals = await this.getReferralsByReferrer(userId);
+    
+    const pendingReferrals = userReferrals.filter(r => r.status === 'pending').length;
+    const qualifiedReferrals = userReferrals.filter(r => r.status === 'qualified').length;
+    const rewardedReferrals = userReferrals.filter(r => r.status === 'rewarded').length;
+    
+    // Get total BMT earned from referral rewards
+    const referralRewards = await db.select().from(rewards)
+      .where(and(
+        eq(rewards.userId, userId),
+        eq(rewards.type, 'referral_bonus')
+      ));
+    
+    const totalBmtEarned = referralRewards.reduce((sum, r) => sum + r.amount, 0);
+    
+    return {
+      totalReferrals: userReferrals.length,
+      pendingReferrals,
+      qualifiedReferrals,
+      rewardedReferrals,
+      totalBmtEarned,
+    };
   }
 }
 

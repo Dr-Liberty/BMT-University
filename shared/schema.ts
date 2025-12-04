@@ -461,3 +461,78 @@ export const insertSuspiciousActivitySchema = createInsertSchema(suspiciousActiv
 });
 
 export type InsertSuspiciousActivity = z.infer<typeof insertSuspiciousActivitySchema>;
+
+// ============ REFERRAL PROGRAM ============
+
+// Settings for the referral program (admin configurable)
+export const referralSettings = pgTable("referral_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  rewardAmount: integer("reward_amount").notNull().default(100), // BMT reward for successful referral
+  triggerAction: varchar("trigger_action", { length: 30 }).notNull().default('enrollment'), // enrollment, course_completion
+  referrerRewardAmount: integer("referrer_reward_amount").notNull().default(100), // Reward for the person who referred
+  refereeRewardAmount: integer("referee_reward_amount").notNull().default(50), // Bonus for the person who was referred
+  maxReferralsPerUser: integer("max_referrals_per_user"), // null = unlimited
+  codeExpirationDays: integer("code_expiration_days"), // null = never expires
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const updateReferralSettingsSchema = z.object({
+  isEnabled: z.boolean().optional(),
+  rewardAmount: z.number().int().min(0).optional(),
+  triggerAction: z.enum(['enrollment', 'course_completion']).optional(),
+  referrerRewardAmount: z.number().int().min(0).optional(),
+  refereeRewardAmount: z.number().int().min(0).optional(),
+  maxReferralsPerUser: z.number().int().min(1).nullable().optional(),
+  codeExpirationDays: z.number().int().min(1).nullable().optional(),
+});
+
+export type UpdateReferralSettings = z.infer<typeof updateReferralSettingsSchema>;
+export type ReferralSettings = typeof referralSettings.$inferSelect;
+
+// Unique referral codes per user
+export const referralCodes = pgTable("referral_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  useCount: integer("use_count").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const insertReferralCodeSchema = createInsertSchema(referralCodes).omit({
+  id: true,
+  useCount: true,
+  createdAt: true,
+});
+
+export type InsertReferralCode = z.infer<typeof insertReferralCodeSchema>;
+export type ReferralCode = typeof referralCodes.$inferSelect;
+
+// Track individual referrals
+export const referrals = pgTable("referrals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id").references(() => users.id).notNull(),
+  referredUserId: varchar("referred_user_id").references(() => users.id).notNull(),
+  referralCodeId: varchar("referral_code_id").references(() => referralCodes.id).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, qualified, rewarded
+  qualifyingAction: varchar("qualifying_action", { length: 30 }), // What action qualified the referral
+  referrerRewardId: varchar("referrer_reward_id").references(() => rewards.id),
+  refereeRewardId: varchar("referee_reward_id").references(() => rewards.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  qualifiedAt: timestamp("qualified_at"),
+});
+
+export const insertReferralSchema = createInsertSchema(referrals).omit({
+  id: true,
+  status: true,
+  qualifyingAction: true,
+  referrerRewardId: true,
+  refereeRewardId: true,
+  createdAt: true,
+  qualifiedAt: true,
+});
+
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type Referral = typeof referrals.$inferSelect;
