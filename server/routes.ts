@@ -538,6 +538,10 @@ export async function registerRoutes(
       
       // Update enrollment progress
       const lesson = await storage.getLesson(req.params.id);
+      let reward = null;
+      let certificate = null;
+      let payoutTransaction = null;
+      
       if (lesson) {
         const enrollment = await storage.getEnrollment(req.user.id, lesson.courseId);
         if (enrollment) {
@@ -552,11 +556,55 @@ export async function registerRoutes(
             completedLessons,
             currentLessonId: req.params.id,
             lastAccessedAt: new Date(),
+            status: progressPercent === 100 ? 'completed' : 'in_progress',
           });
+          
+          // If 100% complete and NO quiz exists, auto-issue certificate and reward
+          if (progressPercent === 100) {
+            const quiz = await storage.getQuizByCourse(lesson.courseId);
+            
+            if (!quiz) {
+              // No quiz - issue certificate and reward upon lesson completion
+              const course = await storage.getCourse(lesson.courseId);
+              const alreadyRewarded = await storage.hasUserCompletedCourseReward(req.user.id, lesson.courseId);
+              
+              if (course && !alreadyRewarded && course.bmtReward > 0) {
+                // Create reward
+                reward = await storage.createReward({
+                  userId: req.user.id,
+                  courseId: lesson.courseId,
+                  amount: course.bmtReward,
+                  type: 'course_completion',
+                });
+                
+                // Create payout transaction
+                payoutTransaction = await storage.createPayoutTransaction({
+                  rewardId: reward.id,
+                  userId: req.user.id,
+                  amount: course.bmtReward,
+                  recipientAddress: req.user.walletAddress,
+                });
+                
+                // Issue certificate
+                certificate = await storage.createCertificate({
+                  userId: req.user.id,
+                  courseId: lesson.courseId,
+                });
+                
+                console.log(`[Auto-Reward] Issued certificate and ${course.bmtReward} BMT for course completion without quiz: user=${req.user.id}, course=${course.id}`);
+              }
+            }
+          }
         }
       }
       
-      res.json(progress);
+      res.json({ 
+        progress, 
+        reward, 
+        certificate,
+        payoutTransaction,
+        courseCompleted: !!certificate,
+      });
     } catch (error) {
       console.error("Error completing lesson:", error);
       res.status(500).json({ error: "Failed to complete lesson" });
@@ -1219,6 +1267,77 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error claiming reward:", error);
       res.status(500).json({ error: "Failed to claim reward" });
+    }
+  });
+
+  // Admin: Manually issue reward for completed enrollments without rewards
+  app.post("/api/admin/issue-reward/:enrollmentId", authMiddleware, async (req: any, res) => {
+    try {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
+      const enrollment = await storage.getEnrollmentById(req.params.enrollmentId);
+      if (!enrollment) {
+        return res.status(404).json({ error: "Enrollment not found" });
+      }
+      
+      if (enrollment.progress !== 100) {
+        return res.status(400).json({ error: "Course not completed (progress must be 100%)" });
+      }
+      
+      const alreadyRewarded = await storage.hasUserCompletedCourseReward(enrollment.userId, enrollment.courseId);
+      if (alreadyRewarded) {
+        return res.status(400).json({ error: "Reward already issued for this course" });
+      }
+      
+      const course = await storage.getCourse(enrollment.courseId);
+      if (!course || course.bmtReward <= 0) {
+        return res.status(400).json({ error: "Course has no BMT reward configured" });
+      }
+      
+      const user = await storage.getUser(enrollment.userId);
+      if (!user || !user.walletAddress) {
+        return res.status(404).json({ error: "User or wallet address not found" });
+      }
+      
+      // Create reward
+      const reward = await storage.createReward({
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+        amount: course.bmtReward,
+        type: 'course_completion',
+      });
+      
+      // Create payout transaction
+      const payoutTransaction = await storage.createPayoutTransaction({
+        rewardId: reward.id,
+        userId: enrollment.userId,
+        amount: course.bmtReward,
+        recipientAddress: user.walletAddress,
+      });
+      
+      // Issue certificate
+      const certificate = await storage.createCertificate({
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+      });
+      
+      // Update enrollment status
+      await storage.updateEnrollment(enrollment.id, { status: 'completed' });
+      
+      console.log(`[Admin] Manually issued reward and certificate: user=${enrollment.userId}, course=${course.id}, amount=${course.bmtReward}`);
+      
+      res.json({ 
+        success: true, 
+        reward, 
+        certificate, 
+        payoutTransaction,
+        message: `Issued ${course.bmtReward} $BMT and certificate for ${course.title}`
+      });
+    } catch (error) {
+      console.error("Error issuing reward:", error);
+      res.status(500).json({ error: "Failed to issue reward" });
     }
   });
 

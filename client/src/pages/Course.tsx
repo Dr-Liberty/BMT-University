@@ -76,15 +76,26 @@ export default function Course() {
 
   const completeLessonMutation = useMutation({
     mutationFn: async (lessonId: string) => {
-      return apiRequest('POST', `/api/lessons/${lessonId}/complete`);
+      const response = await apiRequest('POST', `/api/lessons/${lessonId}/complete`);
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'progress'] });
-      toast({
-        title: 'Lesson completed!',
-        description: 'Great progress! Keep going!',
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+      
+      if (data.courseCompleted && data.certificate) {
+        toast({
+          title: 'Course Completed!',
+          description: `Congratulations! You earned ${data.reward?.amount?.toLocaleString() || 0} $BMT and a certificate!`,
+        });
+      } else {
+        toast({
+          title: 'Lesson completed!',
+          description: 'Great progress! Keep going!',
+        });
+      }
     },
     onError: () => {
       toast({

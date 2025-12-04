@@ -73,6 +73,7 @@ export interface IStorage {
   deleteQuizQuestion(id: string): Promise<boolean>;
   
   getEnrollment(userId: string, courseId: string): Promise<Enrollment | undefined>;
+  getEnrollmentById(enrollmentId: string): Promise<Enrollment | undefined>;
   getEnrollmentsByUser(userId: string): Promise<Enrollment[]>;
   createEnrollment(enrollment: InsertEnrollment): Promise<Enrollment>;
   updateEnrollment(id: string, data: Partial<Enrollment>): Promise<Enrollment | undefined>;
@@ -577,6 +578,11 @@ export class DatabaseStorage implements IStorage {
     const [enrollment] = await db.select().from(enrollments).where(
       and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId))
     );
+    return enrollment || undefined;
+  }
+
+  async getEnrollmentById(enrollmentId: string): Promise<Enrollment | undefined> {
+    const [enrollment] = await db.select().from(enrollments).where(eq(enrollments.id, enrollmentId));
     return enrollment || undefined;
   }
 
