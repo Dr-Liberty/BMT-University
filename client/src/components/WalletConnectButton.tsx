@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ConnectButton, useActiveAccount, useDisconnect } from "thirdweb/react";
-import { createWallet, inAppWallet } from "thirdweb/wallets";
-import { thirdwebClient, kasplexL2 } from '@/lib/thirdweb';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount, useDisconnect } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
@@ -16,26 +15,13 @@ interface WalletConnectButtonProps {
   onDisconnect?: () => void;
 }
 
-const wallets = [
-  inAppWallet({
-    auth: {
-      options: ["email", "google", "apple", "phone"],
-    },
-  }),
-  createWallet("io.metamask"),
-  createWallet("com.coinbase.wallet"),
-  createWallet("me.rainbow"),
-  createWallet("io.rabby"),
-  createWallet("app.phantom"),
-];
-
 export default function WalletConnectButton({ onConnect, onDisconnect }: WalletConnectButtonProps) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
   
-  const account = thirdwebClient ? useActiveAccount() : null;
+  const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
 
   useEffect(() => {
@@ -50,10 +36,16 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   }, []);
 
   useEffect(() => {
-    if (account?.address && !isAuthenticated && !isAuthenticating) {
-      handleAuthentication(account.address);
+    if (address && isConnected && !isAuthenticated && !isAuthenticating && !isDemoMode) {
+      handleAuthentication(address);
     }
-  }, [account?.address, isAuthenticated, isAuthenticating]);
+  }, [address, isConnected, isAuthenticated, isAuthenticating, isDemoMode]);
+
+  useEffect(() => {
+    if (!isConnected && isAuthenticated && !isDemoMode) {
+      handleWalletDisconnect();
+    }
+  }, [isConnected, isAuthenticated, isDemoMode]);
 
   const verifyExistingSession = async (token: string) => {
     try {
@@ -89,7 +81,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       }
 
       const { nonce } = await nonceRes.json();
-      const signature = `0xthirdweb_${nonce.slice(0, 32)}`;
+      const signature = `0xrainbow_${nonce.slice(0, 32)}`;
 
       const verifyRes = await fetch('/api/auth/verify', {
         method: 'POST',
@@ -164,7 +156,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleWalletDisconnect = async () => {
     try {
       const token = getAuthToken();
       if (token) {
@@ -179,8 +171,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
     clearAuthToken();
     setIsAuthenticated(false);
-    disconnect(wallets[0] as any);
-    
+
     queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
     queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
     queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
@@ -302,38 +293,92 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     );
   }
 
-  if (!thirdwebClient) {
-    return (
-      <div className="text-muted-foreground text-sm px-3 py-2 bg-muted rounded-lg">
-        Configure VITE_THIRDWEB_CLIENT_ID
-      </div>
-    );
-  }
-
   return (
     <div data-testid="wallet-connect-container" className="flex items-center gap-2">
-      <ConnectButton
-        client={thirdwebClient}
-        wallets={wallets}
-        chain={kasplexL2}
-        theme="dark"
-        connectModal={{
-          size: "compact",
-          title: "Connect to BMT University",
-          showThirdwebBranding: false,
+      <ConnectButton.Custom>
+        {({
+          account,
+          chain,
+          openAccountModal,
+          openChainModal,
+          openConnectModal,
+          mounted,
+        }) => {
+          const ready = mounted;
+          const connected = ready && account && chain;
+
+          return (
+            <div
+              {...(!ready && {
+                'aria-hidden': true,
+                style: {
+                  opacity: 0,
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                },
+              })}
+            >
+              {(() => {
+                if (!connected) {
+                  return (
+                    <Button
+                      onClick={openConnectModal}
+                      className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
+                      data-testid="button-connect-wallet"
+                    >
+                      Connect Wallet
+                    </Button>
+                  );
+                }
+
+                if (chain.unsupported) {
+                  return (
+                    <Button
+                      onClick={openChainModal}
+                      variant="destructive"
+                      data-testid="button-wrong-network"
+                    >
+                      Wrong Network
+                    </Button>
+                  );
+                }
+
+                return (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={openChainModal}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-2"
+                      data-testid="button-chain"
+                    >
+                      {chain.hasIcon && chain.iconUrl && (
+                        <img
+                          alt={chain.name ?? 'Chain icon'}
+                          src={chain.iconUrl}
+                          className="w-4 h-4"
+                        />
+                      )}
+                      {chain.name}
+                    </Button>
+
+                    <Button
+                      onClick={openAccountModal}
+                      variant="outline"
+                      data-testid="button-account"
+                    >
+                      {account.displayName}
+                      {account.displayBalance ? ` (${account.displayBalance})` : ''}
+                    </Button>
+                  </div>
+                );
+              })()}
+            </div>
+          );
         }}
-        connectButton={{
-          label: "Connect Wallet",
-          className: "!bg-bmt-orange !text-background hover:!bg-bmt-orange/90 !font-medium !px-4 !py-2 !rounded-lg",
-        }}
-        detailsButton={{
-          displayBalanceToken: {
-            [kasplexL2.id]: "0x35fBa50F52e2AA305438134c646957066608d976",
-          },
-        }}
-        onDisconnect={handleDisconnect}
-      />
-      {!isAuthenticated && (
+      </ConnectButton.Custom>
+      
+      {!isAuthenticated && !isConnected && (
         <Button
           variant="outline"
           onClick={handleDemoConnect}
