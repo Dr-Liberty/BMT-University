@@ -1239,15 +1239,18 @@ export async function registerRoutes(
   });
 
   app.post("/api/rewards/:rewardId/claim", authMiddleware, async (req: any, res) => {
+    const rewardId = req.params.rewardId;
+    
     try {
       const rewards = await storage.getRewardsByUser(req.user.id);
-      const reward = rewards.find(r => r.id === req.params.rewardId);
+      const reward = rewards.find(r => r.id === rewardId);
       
       if (!reward) {
         return res.status(404).json({ error: "Reward not found" });
       }
       
-      if (reward.status !== 'pending') {
+      // Allow retry for pending or stuck processing rewards
+      if (reward.status !== 'pending' && reward.status !== 'processing') {
         return res.status(400).json({ error: "Reward already processed" });
       }
       
@@ -1269,7 +1272,7 @@ export async function registerRoutes(
       }
       
       // Mark as processing to prevent double claims
-      await storage.updateReward(reward.id, { status: 'processing' });
+      await storage.updateReward(rewardId, { status: 'processing' });
       
       // Get token decimals and convert amount
       const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
@@ -1279,23 +1282,34 @@ export async function registerRoutes(
       console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT to ${user.walletAddress}`);
       
       // Execute the REAL blockchain transfer
-      const result = await transferERC20(
-        config.tokenContractAddress,
-        user.walletAddress,
-        amountInWei,
-        decimals
-      );
+      let result;
+      try {
+        result = await transferERC20(
+          config.tokenContractAddress,
+          user.walletAddress,
+          amountInWei,
+          decimals
+        );
+      } catch (transferError: any) {
+        console.error(`[Claim] Transfer exception:`, transferError);
+        // Revert to pending on exception so user can retry
+        await storage.updateReward(rewardId, { status: 'pending' });
+        return res.status(500).json({ 
+          error: "Blockchain transaction failed", 
+          details: transferError.message || "Unknown error during transfer"
+        });
+      }
       
       if (result.success && result.txHash) {
         // Update reward with real transaction hash
-        const updated = await storage.updateReward(reward.id, {
+        const updated = await storage.updateReward(rewardId, {
           status: 'confirmed',
           txHash: result.txHash,
           processedAt: new Date(),
         });
         
         // Also update any associated payout transaction
-        const payouts = await storage.getPayoutsByReward(reward.id);
+        const payouts = await storage.getPayoutsByReward(rewardId);
         for (const payout of payouts) {
           await storage.updatePayoutTransaction(payout.id, {
             status: 'completed',
@@ -1314,7 +1328,7 @@ export async function registerRoutes(
         });
       } else {
         // Revert to pending on failure so user can retry
-        await storage.updateReward(reward.id, { status: 'pending' });
+        await storage.updateReward(rewardId, { status: 'pending' });
         
         console.error(`[Claim] FAILED: ${result.error}`);
         
@@ -1323,9 +1337,15 @@ export async function registerRoutes(
           details: result.error 
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error claiming reward:", error);
-      res.status(500).json({ error: "Failed to claim reward" });
+      // Always try to revert to pending on any error
+      try {
+        await storage.updateReward(rewardId, { status: 'pending' });
+      } catch (revertError) {
+        console.error("Failed to revert reward status:", revertError);
+      }
+      res.status(500).json({ error: "Failed to claim reward", details: error.message });
     }
   });
 
