@@ -3,12 +3,42 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import StatsCard from '@/components/StatsCard';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import RewardHistory, { RewardTransaction } from '@/components/RewardHistory';
 import CertificateModal, { Certificate } from '@/components/CertificateModal';
-import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw } from 'lucide-react';
-import type { Course, Enrollment, Reward, Certificate as CertificateType } from '@shared/schema';
+import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw, Users, Share2, Copy, Check, Gift } from 'lucide-react';
+import type { Course, Enrollment, Reward, Certificate as CertificateType, ReferralCode, Referral } from '@shared/schema';
+import { useToast } from '@/hooks/use-toast';
+
+interface ReferralStats {
+  totalReferrals: number;
+  pendingReferrals: number;
+  qualifiedReferrals: number;
+  rewardedReferrals: number;
+  totalBmtEarned: number;
+}
+
+interface ReferralSettings {
+  isEnabled: boolean;
+  referrerRewardAmount: number;
+  refereeRewardAmount: number;
+  triggerAction: string;
+}
+
+interface ReferralCodeWithLink extends ReferralCode {
+  shareLink: string;
+}
+
+interface ReferralWithUser extends Referral {
+  referredUser?: {
+    displayName: string | null;
+    walletAddress: string;
+  };
+}
 
 interface EnrollmentWithCourse extends Enrollment {
   course?: Course;
@@ -83,9 +113,31 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('courses');
   const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const { toast } = useToast();
 
   const { data: enrollments = [], isLoading: enrollmentsLoading, error: enrollmentsError, refetch: refetchEnrollments } = useQuery<EnrollmentWithCourse[]>({
     queryKey: ['/api/enrollments'],
+    retry: false,
+  });
+  
+  const { data: referralCode } = useQuery<ReferralCodeWithLink>({
+    queryKey: ['/api/referrals/my-code'],
+    retry: false,
+  });
+  
+  const { data: referralStats } = useQuery<ReferralStats>({
+    queryKey: ['/api/referrals/stats'],
+    retry: false,
+  });
+  
+  const { data: referralSettings } = useQuery<ReferralSettings>({
+    queryKey: ['/api/referrals/settings'],
+  });
+  
+  const { data: referralsList = [] } = useQuery<ReferralWithUser[]>({
+    queryKey: ['/api/referrals/list'],
     retry: false,
   });
 
@@ -138,6 +190,24 @@ export default function Dashboard() {
 
   const handleContinue = (courseId: string) => {
     setLocation(`/course/${courseId}`);
+  };
+
+  const handleCopyCode = () => {
+    if (referralCode?.code) {
+      navigator.clipboard.writeText(referralCode.code);
+      setCodeCopied(true);
+      toast({ title: 'Code copied!', description: 'Referral code copied to clipboard' });
+      setTimeout(() => setCodeCopied(false), 2000);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (referralCode?.shareLink) {
+      navigator.clipboard.writeText(referralCode.shareLink);
+      setLinkCopied(true);
+      toast({ title: 'Link copied!', description: 'Share link copied to clipboard' });
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   };
 
   const isLoading = enrollmentsLoading;
@@ -233,6 +303,10 @@ export default function Dashboard() {
             <TabsTrigger value="rewards" className="gap-2" data-testid="tab-rewards">
               <Coins className="w-4 h-4" />
               Rewards
+            </TabsTrigger>
+            <TabsTrigger value="referrals" className="gap-2" data-testid="tab-referrals">
+              <Users className="w-4 h-4" />
+              Referrals
             </TabsTrigger>
           </TabsList>
 
@@ -333,6 +407,163 @@ export default function Dashboard() {
                 <Coins className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-heading font-semibold text-xl text-white mb-2">No rewards yet</h3>
                 <p className="text-muted-foreground">Complete courses to start earning $BMT tokens</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="referrals" className="space-y-6">
+            {referralSettings?.isEnabled ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Card className="lg:col-span-2 border-kaspa-cyan/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white">
+                        <Share2 className="w-5 h-5 text-kaspa-cyan" />
+                        Share Your Referral Link
+                      </CardTitle>
+                      <CardDescription>
+                        Invite friends to BMT University and earn {referralSettings.referrerRewardAmount} $BMT for each successful referral!
+                        {referralSettings.triggerAction === 'enrollment' 
+                          ? ' They earn rewards when they enroll in a course.'
+                          : ' They earn rewards when they complete a course.'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-2 block">Your Referral Code</label>
+                        <div className="flex gap-2">
+                          <Input 
+                            value={referralCode?.code || 'Loading...'} 
+                            readOnly 
+                            className="font-mono text-lg bg-muted"
+                            data-testid="input-referral-code"
+                          />
+                          <Button 
+                            variant="outline" 
+                            size="icon"
+                            onClick={handleCopyCode}
+                            data-testid="button-copy-code"
+                          >
+                            {codeCopied ? <Check className="w-4 h-4 text-kaspa-green" /> : <Copy className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-2 block">Share Link</label>
+                        <div className="flex gap-2">
+                          <Input 
+                            value={referralCode?.shareLink || 'Loading...'} 
+                            readOnly 
+                            className="text-sm bg-muted"
+                            data-testid="input-share-link"
+                          />
+                          <Button 
+                            variant="outline" 
+                            size="icon"
+                            onClick={handleCopyLink}
+                            data-testid="button-copy-link"
+                          >
+                            {linkCopied ? <Check className="w-4 h-4 text-kaspa-green" /> : <Copy className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-3 pt-2">
+                        <Badge variant="secondary" className="gap-1">
+                          <Gift className="w-3 h-3" />
+                          You earn: {referralSettings.referrerRewardAmount} $BMT
+                        </Badge>
+                        <Badge variant="outline" className="gap-1 border-kaspa-cyan/30 text-kaspa-cyan">
+                          <Gift className="w-3 h-3" />
+                          Friend earns: {referralSettings.refereeRewardAmount} $BMT
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="border-bmt-orange/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white">
+                        <Trophy className="w-5 h-5 text-bmt-orange" />
+                        Your Stats
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                        <span className="text-muted-foreground">Total Referrals</span>
+                        <span className="font-semibold text-white">{referralStats?.totalReferrals || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                        <span className="text-muted-foreground">Pending</span>
+                        <Badge variant="secondary">{referralStats?.pendingReferrals || 0}</Badge>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                        <span className="text-muted-foreground">Rewarded</span>
+                        <Badge className="bg-kaspa-green/20 text-kaspa-green">{referralStats?.rewardedReferrals || 0}</Badge>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-muted-foreground">$BMT Earned</span>
+                        <span className="font-bold text-bmt-orange">{referralStats?.totalBmtEarned?.toLocaleString() || 0}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                {referralsList.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white">
+                        <Users className="w-5 h-5 text-kaspa-cyan" />
+                        Your Referrals
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {referralsList.map((referral) => (
+                          <div 
+                            key={referral.id}
+                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                            data-testid={`referral-item-${referral.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-kaspa-cyan/20 flex items-center justify-center">
+                                <Users className="w-5 h-5 text-kaspa-cyan" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-white">
+                                  {referral.referredUser?.displayName || referral.referredUser?.walletAddress || 'Anonymous User'}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Joined {referral.createdAt ? new Date(referral.createdAt).toLocaleDateString() : 'Recently'}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge 
+                              variant={referral.status === 'rewarded' ? 'default' : 'secondary'}
+                              className={referral.status === 'rewarded' ? 'bg-kaspa-green/20 text-kaspa-green' : ''}
+                            >
+                              {referral.status === 'rewarded' ? 'Rewarded' : referral.status === 'qualified' ? 'Qualified' : 'Pending'}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {referralsList.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No referrals yet. Share your link to start earning!</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-16">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-heading font-semibold text-xl text-white mb-2">Referral Program Unavailable</h3>
+                <p className="text-muted-foreground">The referral program is currently not active. Check back later!</p>
               </div>
             )}
           </TabsContent>
