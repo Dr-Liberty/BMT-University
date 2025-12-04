@@ -19,19 +19,20 @@ import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
 import type { User } from '@shared/schema';
 
+interface EthereumProvider {
+  isMetaMask?: boolean;
+  isKasware?: boolean;
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, callback: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, callback: (...args: unknown[]) => void) => void;
+  providers?: EthereumProvider[];
+}
+
 declare global {
   interface Window {
-    ethereum?: {
-      isMetaMask?: boolean;
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-      on: (event: string, callback: (...args: unknown[]) => void) => void;
-      removeListener: (event: string, callback: (...args: unknown[]) => void) => void;
-    };
+    ethereum?: EthereumProvider;
     kasware?: {
-      ethereum?: {
-        request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-        isKasware?: boolean;
-      };
+      ethereum?: EthereumProvider;
       requestAccounts?: () => Promise<string[]>;
       getAccounts?: () => Promise<string[]>;
       signMessage?: (message: string) => Promise<string>;
@@ -39,6 +40,45 @@ declare global {
       removeListener?: (event: string, callback: (...args: unknown[]) => void) => void;
     };
   }
+}
+
+// Get the actual MetaMask provider, handling multi-wallet scenarios
+function getMetaMaskProvider(): EthereumProvider | null {
+  if (!window.ethereum) return null;
+  
+  // If there's a providers array (multi-wallet), find MetaMask specifically
+  if (window.ethereum.providers?.length) {
+    const metamask = window.ethereum.providers.find(p => p.isMetaMask && !p.isKasware);
+    if (metamask) return metamask;
+  }
+  
+  // Check if the main ethereum object is MetaMask (and not Kasware pretending)
+  if (window.ethereum.isMetaMask && !window.ethereum.isKasware) {
+    return window.ethereum;
+  }
+  
+  return null;
+}
+
+// Get the Kasware provider - prefer window.kasware.ethereum
+function getKaswareProvider(): EthereumProvider | null {
+  // Prefer the dedicated Kasware ethereum provider
+  if (window.kasware?.ethereum) {
+    return window.kasware.ethereum;
+  }
+  
+  // Fallback: check providers array
+  if (window.ethereum?.providers?.length) {
+    const kasware = window.ethereum.providers.find(p => p.isKasware);
+    if (kasware) return kasware;
+  }
+  
+  // Last resort: main ethereum if it's Kasware
+  if (window.ethereum?.isKasware) {
+    return window.ethereum;
+  }
+  
+  return null;
 }
 
 interface WalletConnectButtonProps {
@@ -91,18 +131,19 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
   const detectAvailableWallets = () => {
     const wallets: { type: WalletType; name: string; available: boolean }[] = [
-      { type: 'metamask', name: 'MetaMask', available: !!window.ethereum?.isMetaMask },
-      { type: 'kasware', name: 'Kasware', available: !!(window.kasware?.ethereum || window.kasware?.requestAccounts) },
+      { type: 'metamask', name: 'MetaMask', available: !!getMetaMaskProvider() },
+      { type: 'kasware', name: 'Kasware', available: !!(getKaswareProvider() || window.kasware?.requestAccounts) },
     ];
     return wallets;
   };
 
   const connectMetaMask = async (): Promise<{ address: string; signature: string }> => {
-    if (!window.ethereum) {
-      throw new Error('MetaMask is not installed');
+    const provider = getMetaMaskProvider();
+    if (!provider) {
+      throw new Error('MetaMask is not installed or not detected. If you have multiple wallets, please ensure MetaMask is enabled.');
     }
 
-    const accounts = await window.ethereum.request({
+    const accounts = await provider.request({
       method: 'eth_requestAccounts',
     }) as string[];
 
@@ -124,7 +165,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
     const { message } = await nonceRes.json();
     
-    const signature = await window.ethereum.request({
+    const signature = await provider.request({
       method: 'personal_sign',
       params: [message, address],
     }) as string;
