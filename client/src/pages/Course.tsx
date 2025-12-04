@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle, Video, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle, Video, FileText, ChevronDown, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import type { Course as CourseType, Lesson, Quiz, Enrollment, Module } from '@shared/schema';
@@ -27,6 +27,39 @@ function formatDuration(minutes: number | null | undefined): string {
   if (hours === 0) return `${mins} min`;
   if (mins === 0) return `${hours} hr`;
   return `${hours} hr ${mins} min`;
+}
+
+function getVideoEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  
+  // YouTube - various formats
+  const youtubeMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (youtubeMatch) {
+    return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+  }
+  
+  // Vimeo
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeoMatch) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+  
+  // Loom
+  const loomMatch = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+  if (loomMatch) {
+    return `https://www.loom.com/embed/${loomMatch[1]}`;
+  }
+  
+  // Already an embed URL or direct video
+  if (url.includes('embed') || url.match(/\.(mp4|webm|ogg)$/i)) {
+    return url;
+  }
+  
+  return url;
+}
+
+function isDirectVideo(url: string): boolean {
+  return url.match(/\.(mp4|webm|ogg)$/i) !== null;
 }
 
 export default function Course() {
@@ -186,6 +219,8 @@ export default function Course() {
               <Lock className="w-4 h-4" />
             ) : lesson.videoUrl ? (
               <Video className="w-4 h-4" />
+            ) : lesson.imageUrl ? (
+              <ImageIcon className="w-4 h-4" />
             ) : (
               <FileText className="w-4 h-4" />
             )}
@@ -207,17 +242,40 @@ export default function Course() {
 
         {expandedLesson === lesson.id && !isLocked && (
           <div className="px-4 pb-4 pl-[60px]">
-            {lesson.videoUrl && (
-              <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
-                <iframe
-                  src={lesson.videoUrl.replace('watch?v=', 'embed/')}
-                  className="w-full h-full"
-                  allowFullScreen
-                  title={lesson.title}
+            {lesson.imageUrl && (
+              <div className="mb-4 rounded-lg overflow-hidden">
+                <img
+                  src={lesson.imageUrl}
+                  alt={lesson.title}
+                  className="w-full max-h-80 object-cover rounded-lg"
+                  data-testid={`img-lesson-${lesson.id}`}
                 />
               </div>
             )}
-            <div className="prose prose-sm prose-invert text-muted-foreground mb-4">
+            {lesson.videoUrl && (
+              <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
+                {isDirectVideo(lesson.videoUrl) ? (
+                  <video
+                    src={lesson.videoUrl}
+                    controls
+                    className="w-full h-full"
+                    data-testid={`video-lesson-${lesson.id}`}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                ) : (
+                  <iframe
+                    src={getVideoEmbedUrl(lesson.videoUrl) || lesson.videoUrl}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    title={lesson.title}
+                    data-testid={`iframe-lesson-${lesson.id}`}
+                  />
+                )}
+              </div>
+            )}
+            <div className="prose prose-sm prose-invert text-muted-foreground mb-4 whitespace-pre-wrap">
               {lesson.content}
             </div>
             {isEnrolled && !isCompleted && (

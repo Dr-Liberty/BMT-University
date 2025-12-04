@@ -67,7 +67,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   
   const [moduleForm, setModuleForm] = useState({ title: '', description: '' });
-  const [lessonForm, setLessonForm] = useState({ title: '', content: '', videoUrl: '', duration: 10 });
+  const [lessonForm, setLessonForm] = useState({ title: '', content: '', videoUrl: '', imageUrl: '', duration: 10 });
   const [quizForm, setQuizForm] = useState({ 
     title: '', 
     description: '', 
@@ -147,7 +147,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
 
   // Lesson mutations
   const createLessonMutation = useMutation({
-    mutationFn: async (data: { title: string; content: string; videoUrl?: string; duration?: number; moduleId?: string }) => {
+    mutationFn: async (data: { title: string; content: string; videoUrl?: string; imageUrl?: string; duration?: number; moduleId?: string }) => {
       const endpoint = selectedModuleId 
         ? `/api/modules/${selectedModuleId}/lessons`
         : `/api/courses/${courseId}/lessons`;
@@ -156,7 +156,7 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'lessons'] });
       setLessonDialogOpen(false);
-      setLessonForm({ title: '', content: '', videoUrl: '', duration: 10 });
+      setLessonForm({ title: '', content: '', videoUrl: '', imageUrl: '', duration: 10 });
       toast({ title: "Lesson created" });
     },
     onError: (error: any) => {
@@ -300,11 +300,12 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
         title: lesson.title, 
         content: lesson.content, 
         videoUrl: lesson.videoUrl || '', 
+        imageUrl: lesson.imageUrl || '',
         duration: lesson.duration || 10 
       });
     } else {
       setEditingLesson(null);
-      setLessonForm({ title: '', content: '', videoUrl: '', duration: 10 });
+      setLessonForm({ title: '', content: '', videoUrl: '', imageUrl: '', duration: 10 });
     }
     setLessonDialogOpen(true);
   };
@@ -511,8 +512,20 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
                             <Badge variant="secondary" className="text-xs">
                               {lessonIndex + 1}
                             </Badge>
-                            <FileText className="w-4 h-4 text-kaspa-cyan" />
+                            {lesson.videoUrl ? (
+                              <Video className="w-4 h-4 text-kaspa-cyan" />
+                            ) : lesson.imageUrl ? (
+                              <Image className="w-4 h-4 text-kaspa-cyan" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-kaspa-cyan" />
+                            )}
                             <span className="flex-1 text-sm">{lesson.title}</span>
+                            {(lesson.imageUrl || lesson.videoUrl) && (
+                              <div className="flex gap-1">
+                                {lesson.imageUrl && <Image className="w-3 h-3 text-muted-foreground" />}
+                                {lesson.videoUrl && <Video className="w-3 h-3 text-muted-foreground" />}
+                              </div>
+                            )}
                             {lesson.duration && (
                               <span className="text-xs text-muted-foreground">{lesson.duration} min</span>
                             )}
@@ -842,14 +855,26 @@ export default function CourseBuilder({ courseId, onBack }: CourseBuilderProps) 
               </div>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="lesson-image">Image URL (optional)</Label>
+              <Input
+                id="lesson-image"
+                value={lessonForm.imageUrl}
+                onChange={(e) => setLessonForm({ ...lessonForm, imageUrl: e.target.value })}
+                placeholder="https://example.com/image.jpg"
+                data-testid="input-lesson-image"
+              />
+              <p className="text-xs text-muted-foreground">Add a featured image for this lesson</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="lesson-video">Video URL (optional)</Label>
               <Input
                 id="lesson-video"
                 value={lessonForm.videoUrl}
                 onChange={(e) => setLessonForm({ ...lessonForm, videoUrl: e.target.value })}
-                placeholder="https://youtube.com/watch?v=..."
+                placeholder="YouTube, Vimeo, Loom, or direct video URL"
                 data-testid="input-lesson-video"
               />
+              <p className="text-xs text-muted-foreground">Supports YouTube, Vimeo, Loom links, or direct .mp4/.webm URLs</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="lesson-content">Content</Label>

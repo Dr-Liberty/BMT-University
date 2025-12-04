@@ -95,6 +95,7 @@ export const lessons = pgTable("lessons", {
   content: text("content").notNull(),
   contentBlocks: jsonb("content_blocks").$type<ContentBlock[]>().default([]),
   videoUrl: text("video_url"),
+  imageUrl: text("image_url"),
   orderIndex: integer("order_index").notNull().default(0),
   duration: integer("duration"),
   isPublished: boolean("is_published").notNull().default(true),
