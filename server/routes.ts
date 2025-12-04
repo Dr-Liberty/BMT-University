@@ -1251,19 +1251,78 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Reward already processed" });
       }
       
-      // Simulate blockchain transaction (in production, this would call Kasplex SDK)
-      const mockTxHash = `kas:${randomBytes(32).toString('hex').slice(0, 64)}`;
+      // Check if paymaster is configured
+      if (!isPaymasterConfigured()) {
+        return res.status(400).json({ error: "Paymaster wallet not configured. Contact admin." });
+      }
       
-      const updated = await storage.updateReward(reward.id, {
-        status: 'confirmed',
-        txHash: mockTxHash,
-        processedAt: new Date(),
-      });
+      // Get token contract from config
+      const config = await storage.getPaymasterConfig();
+      if (!config?.tokenContractAddress) {
+        return res.status(400).json({ error: "Token contract not configured. Contact admin." });
+      }
       
-      res.json({
-        ...updated,
-        message: `Successfully claimed ${reward.amount} $BMT!`,
-      });
+      // Get user's wallet address
+      const user = await storage.getUser(req.user.id);
+      if (!user?.walletAddress) {
+        return res.status(400).json({ error: "No wallet address on your account" });
+      }
+      
+      // Mark as processing to prevent double claims
+      await storage.updateReward(reward.id, { status: 'processing' });
+      
+      // Get token decimals and convert amount
+      const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
+      const decimals = tokenInfo?.decimals || 8;
+      const amountInWei = parseTokenAmount(reward.amount.toString(), decimals);
+      
+      console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT to ${user.walletAddress}`);
+      
+      // Execute the REAL blockchain transfer
+      const result = await transferERC20(
+        config.tokenContractAddress,
+        user.walletAddress,
+        amountInWei,
+        decimals
+      );
+      
+      if (result.success && result.txHash) {
+        // Update reward with real transaction hash
+        const updated = await storage.updateReward(reward.id, {
+          status: 'confirmed',
+          txHash: result.txHash,
+          processedAt: new Date(),
+        });
+        
+        // Also update any associated payout transaction
+        const payouts = await storage.getPayoutsByReward(reward.id);
+        for (const payout of payouts) {
+          await storage.updatePayoutTransaction(payout.id, {
+            status: 'completed',
+            txHash: result.txHash,
+            processedAt: new Date(),
+          });
+        }
+        
+        console.log(`[Claim] SUCCESS: ${reward.amount} BMT sent to ${user.walletAddress}, txHash: ${result.txHash}`);
+        
+        res.json({
+          ...updated,
+          message: `Successfully claimed ${reward.amount} $BMT!`,
+          txHash: result.txHash,
+          blockNumber: result.blockNumber,
+        });
+      } else {
+        // Revert to pending on failure so user can retry
+        await storage.updateReward(reward.id, { status: 'pending' });
+        
+        console.error(`[Claim] FAILED: ${result.error}`);
+        
+        res.status(500).json({ 
+          error: "Blockchain transaction failed", 
+          details: result.error 
+        });
+      }
     } catch (error) {
       console.error("Error claiming reward:", error);
       res.status(500).json({ error: "Failed to claim reward" });

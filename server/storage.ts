@@ -110,6 +110,7 @@ export interface IStorage {
   
   getPayoutTransaction(id: string): Promise<PayoutTransaction | undefined>;
   getPayoutTransactionsByUser(userId: string): Promise<PayoutTransaction[]>;
+  getPayoutsByReward(rewardId: string): Promise<PayoutTransaction[]>;
   getPendingPayoutTransactions(): Promise<PayoutTransaction[]>;
   getAllPayoutTransactions(): Promise<PayoutTransaction[]>;
   createPayoutTransaction(payout: InsertPayoutTransaction): Promise<PayoutTransaction>;
@@ -762,6 +763,12 @@ export class DatabaseStorage implements IStorage {
   async getPayoutTransactionsByUser(userId: string): Promise<PayoutTransaction[]> {
     return db.select().from(payoutTransactions)
       .where(eq(payoutTransactions.userId, userId))
+      .orderBy(desc(payoutTransactions.createdAt));
+  }
+
+  async getPayoutsByReward(rewardId: string): Promise<PayoutTransaction[]> {
+    return db.select().from(payoutTransactions)
+      .where(eq(payoutTransactions.rewardId, rewardId))
       .orderBy(desc(payoutTransactions.createdAt));
   }
 
