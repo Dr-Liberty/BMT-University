@@ -129,13 +129,38 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isLoading, setIsLoading] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState<WalletType | null>(null);
+  const [availableWallets, setAvailableWallets] = useState<{ type: WalletType; name: string; available: boolean }[]>([]);
   const { toast } = useToast();
+
+  // Detect wallets - call this multiple times as extensions may load late
+  const refreshWalletDetection = () => {
+    const wallets: { type: WalletType; name: string; available: boolean }[] = [
+      { type: 'metamask', name: 'MetaMask', available: !!getMetaMaskProvider() },
+      { type: 'kasware', name: 'Kasware', available: !!(getKaswareProvider() || window.kasware?.requestAccounts) },
+    ];
+    setAvailableWallets(wallets);
+    console.log('[Wallet] Detection refresh:', wallets.map(w => `${w.name}: ${w.available}`).join(', '));
+  };
 
   useEffect(() => {
     const token = getAuthToken();
     if (token) {
       fetchCurrentUser();
     }
+    
+    // Initial detection
+    refreshWalletDetection();
+    
+    // Re-detect after delays (wallet extensions load asynchronously)
+    const timer1 = setTimeout(refreshWalletDetection, 500);
+    const timer2 = setTimeout(refreshWalletDetection, 1500);
+    const timer3 = setTimeout(refreshWalletDetection, 3000);
+    
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
   }, []);
 
   const fetchCurrentUser = async () => {
@@ -163,13 +188,11 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   };
 
   const displayAddress = formatAddress(fullAddress);
-
-  const detectAvailableWallets = () => {
-    const wallets: { type: WalletType; name: string; available: boolean }[] = [
-      { type: 'metamask', name: 'MetaMask', available: !!getMetaMaskProvider() },
-      { type: 'kasware', name: 'Kasware', available: !!(getKaswareProvider() || window.kasware?.requestAccounts) },
-    ];
-    return wallets;
+  
+  // When opening the wallet selector, refresh detection
+  const openWalletSelector = () => {
+    refreshWalletDetection();
+    setShowWalletSelector(true);
   };
 
   const connectMetaMask = async (): Promise<{ address: string; signature: string }> => {
@@ -430,14 +453,12 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     });
   };
 
-  const wallets = detectAvailableWallets();
-
   if (!isConnected) {
     return (
       <>
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => setShowWalletSelector(true)}
+            onClick={openWalletSelector}
             disabled={isLoading}
             className="bg-transparent border border-kaspa-cyan text-kaspa-cyan hover:bg-kaspa-cyan/10 font-heading uppercase tracking-wide gap-2"
             data-testid="button-connect-wallet"
@@ -474,7 +495,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
                 Connect your EVM-compatible wallet to access BMT University
               </p>
               
-              {wallets.map((wallet) => (
+              {availableWallets.map((wallet) => (
                 <Button
                   key={wallet.type}
                   variant="outline"
