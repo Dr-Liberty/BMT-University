@@ -37,6 +37,35 @@ interface SubmitQuizResponse {
   feedback: Record<string, { correct: boolean; correctAnswer: string; explanation?: string }>;
   reward: Reward | null;
   certificate: Certificate | null;
+  rewardBlocked?: boolean;
+  blockReason?: string;
+}
+
+function getDeviceFingerprint(): { hash: string; screenResolution: string; timezone: string; language: string; platform: string } {
+  const screenResolution = `${window.screen.width}x${window.screen.height}`;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const language = navigator.language;
+  const platform = navigator.platform;
+  
+  const fingerprintData = `${navigator.userAgent}|${screenResolution}|${timezone}|${language}|${platform}`;
+  
+  let hash = 0;
+  for (let i = 0; i < fingerprintData.length; i++) {
+    const char = fingerprintData.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  const hashStr = Math.abs(hash).toString(16).padStart(8, '0') + 
+                  Date.now().toString(16).slice(-8);
+  
+  return {
+    hash: hashStr,
+    screenResolution,
+    timezone,
+    language,
+    platform,
+  };
 }
 
 export default function Quiz() {
@@ -59,7 +88,8 @@ export default function Quiz() {
 
   const submitMutation = useMutation<SubmitQuizResponse, Error, { quizId: string; answers: Record<string, string> }>({
     mutationFn: async ({ quizId, answers }) => {
-      const res = await apiRequest('POST', `/api/quizzes/${quizId}/submit`, { answers });
+      const fingerprint = getDeviceFingerprint();
+      const res = await apiRequest('POST', `/api/quizzes/${quizId}/submit`, { answers, fingerprint });
       return res.json();
     },
     onSuccess: (data) => {
@@ -69,10 +99,18 @@ export default function Quiz() {
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
       
       if (data.passed) {
-        toast({
-          title: 'Quiz Passed!',
-          description: `You scored ${data.score}% and earned ${data.reward?.amount.toLocaleString() || 0} $BMT!`,
-        });
+        if (data.rewardBlocked) {
+          toast({
+            title: 'Quiz Passed!',
+            description: data.blockReason || 'You have already received a reward for this course.',
+            variant: 'default',
+          });
+        } else {
+          toast({
+            title: 'Quiz Passed!',
+            description: `You scored ${data.score}% and earned ${data.reward?.amount.toLocaleString() || 0} $BMT!`,
+          });
+        }
       }
     },
     onError: (error) => {
@@ -215,11 +253,20 @@ export default function Quiz() {
                 {quizResult.correctCount} out of {quizResult.totalQuestions} correct
               </p>
 
-              {quizResult.passed && quizResult.reward && (
+              {quizResult.passed && quizResult.reward && !quizResult.rewardBlocked && (
                 <div className="bg-muted p-4 rounded-lg mb-8" data-testid="reward-earned">
                   <p className="text-sm text-muted-foreground mb-1">Reward Earned</p>
                   <p className="font-heading font-bold text-2xl text-bmt-orange">
                     +{quizResult.reward.amount.toLocaleString()} $BMT
+                  </p>
+                </div>
+              )}
+
+              {quizResult.passed && quizResult.rewardBlocked && (
+                <div className="bg-muted p-4 rounded-lg mb-8 border border-muted-foreground/30" data-testid="reward-blocked">
+                  <AlertCircle className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {quizResult.blockReason || 'Reward already claimed for this course'}
                   </p>
                 </div>
               )}
