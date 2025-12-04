@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BookOpen, Award, Coins } from 'lucide-react';
 import { Link } from 'wouter';
-import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 
 interface StatsData {
   totalCourses: number;

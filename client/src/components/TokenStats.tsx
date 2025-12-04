@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, Users, DollarSign, BarChart3, Coins } from 'lucide-react';
-import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 
 const BMT_TOKEN_ADDRESS = '0x35fBa50F52e2AA305438134c646957066608d976';
 

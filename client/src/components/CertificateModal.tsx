@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Download, Share2, ExternalLink, Award, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 
 export interface Certificate {
   id: string;

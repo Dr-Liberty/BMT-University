@@ -2,7 +2,7 @@ import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Shield } from 'lucide-react';
 import WalletConnectButton from './WalletConnectButton';
-import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 import { getAuthToken } from '@/lib/auth';
 
 const navLinks = [
