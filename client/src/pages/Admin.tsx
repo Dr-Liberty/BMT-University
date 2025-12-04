@@ -10,8 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface PaymasterConfig {
   configured: boolean;
@@ -66,11 +69,27 @@ interface Payout {
 interface CourseWithStats {
   id: string;
   title: string;
+  description?: string;
+  shortDescription?: string;
+  category?: string;
+  difficulty?: string;
+  duration?: number;
   bmtReward: number;
   totalPaid: number;
   pendingAmount: number;
   rewardsClaimed: number;
   rewardsPending: number;
+  isPublished: boolean;
+}
+
+interface CourseFormData {
+  title: string;
+  description: string;
+  shortDescription: string;
+  category: string;
+  difficulty: string;
+  duration: number;
+  bmtReward: number;
   isPublished: boolean;
 }
 
@@ -87,10 +106,25 @@ interface TokenData {
   priceChange24h?: number;
 }
 
+const defaultCourseForm: CourseFormData = {
+  title: '',
+  description: '',
+  shortDescription: '',
+  category: 'blockchain',
+  difficulty: 'beginner',
+  duration: 60,
+  bmtReward: 5000,
+  isPublished: false,
+};
+
 export default function Admin() {
   const { toast } = useToast();
   const [editingReward, setEditingReward] = useState<string | null>(null);
   const [newRewardAmount, setNewRewardAmount] = useState<number>(0);
+  
+  const [courseDialogOpen, setCourseDialogOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<string | null>(null);
+  const [courseForm, setCourseForm] = useState<CourseFormData>(defaultCourseForm);
 
   const { data: paymasterConfig, isLoading: configLoading } = useQuery<PaymasterConfig>({
     queryKey: ['/api/admin/paymaster'],
@@ -204,6 +238,67 @@ export default function Admin() {
     },
   });
 
+  const createCourseMutation = useMutation({
+    mutationFn: async (data: CourseFormData) => {
+      return apiRequest('POST', '/api/courses', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/courses'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/courses'] });
+      setCourseDialogOpen(false);
+      setCourseForm(defaultCourseForm);
+      toast({ title: "Course created", description: "New course has been created successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create course", variant: "destructive" });
+    },
+  });
+
+  const updateCourseMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<CourseFormData> }) => {
+      return apiRequest('PUT', `/api/courses/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/courses'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/courses'] });
+      setCourseDialogOpen(false);
+      setEditingCourse(null);
+      setCourseForm(defaultCourseForm);
+      toast({ title: "Course updated", description: "Course has been updated successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update course", variant: "destructive" });
+    },
+  });
+
+  const handleOpenCourseDialog = (course?: CourseWithStats) => {
+    if (course) {
+      setEditingCourse(course.id);
+      setCourseForm({
+        title: course.title,
+        description: course.description || '',
+        shortDescription: course.shortDescription || '',
+        category: course.category || 'blockchain',
+        difficulty: course.difficulty || 'beginner',
+        duration: course.duration || 60,
+        bmtReward: course.bmtReward,
+        isPublished: course.isPublished,
+      });
+    } else {
+      setEditingCourse(null);
+      setCourseForm(defaultCourseForm);
+    }
+    setCourseDialogOpen(true);
+  };
+
+  const handleSaveCourse = () => {
+    if (editingCourse) {
+      updateCourseMutation.mutate({ id: editingCourse, data: courseForm });
+    } else {
+      createCourseMutation.mutate(courseForm);
+    }
+  };
+
   const handleSaveConfig = () => {
     saveConfigMutation.mutate(formData);
   };
@@ -242,8 +337,12 @@ export default function Admin() {
         <h1 className="text-3xl font-bold" data-testid="text-admin-title">Admin Dashboard</h1>
       </div>
 
-      <Tabs defaultValue="paymaster" className="space-y-6">
+      <Tabs defaultValue="courses" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="courses" data-testid="tab-courses">
+            <BookOpen className="w-4 h-4 mr-2" />
+            Courses
+          </TabsTrigger>
           <TabsTrigger value="paymaster" data-testid="tab-paymaster">
             <Wallet className="w-4 h-4 mr-2" />
             Paymaster Wallet
@@ -257,6 +356,227 @@ export default function Admin() {
             Payouts
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="courses">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Course Management</CardTitle>
+                  <CardDescription>
+                    Create, edit, and manage courses. Add quizzes and set $BMT rewards.
+                  </CardDescription>
+                </div>
+                <Button onClick={() => handleOpenCourseDialog()} data-testid="button-create-course">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Course
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {coursesLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
+                </div>
+              ) : courses && courses.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Course</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Difficulty</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead className="text-right">Reward</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {courses.map((course) => (
+                      <TableRow key={course.id} data-testid={`row-course-manage-${course.id}`}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{course.title}</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-xs">
+                              {course.shortDescription || course.description?.slice(0, 50)}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{course.category || 'General'}</Badge>
+                        </TableCell>
+                        <TableCell className="capitalize">{course.difficulty || 'Beginner'}</TableCell>
+                        <TableCell>{course.duration || 60} min</TableCell>
+                        <TableCell className="text-right font-semibold">{course.bmtReward} $BMT</TableCell>
+                        <TableCell>
+                          {course.isPublished ? (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
+                              Published
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Draft</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenCourseDialog(course)}
+                            data-testid={`button-edit-course-${course.id}`}
+                          >
+                            <Edit className="w-4 h-4 mr-1" />
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No courses yet</p>
+                  <p className="text-sm">Create your first course to get started</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <Dialog open={courseDialogOpen} onOpenChange={setCourseDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
+              <DialogDescription>
+                {editingCourse ? 'Update course details below.' : 'Fill in the details to create a new course.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="course-title">Course Title</Label>
+                <Input
+                  id="course-title"
+                  placeholder="e.g., Introduction to Blockchain"
+                  value={courseForm.title}
+                  onChange={(e) => setCourseForm(prev => ({ ...prev, title: e.target.value }))}
+                  data-testid="input-course-title"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="course-short-desc">Short Description</Label>
+                <Input
+                  id="course-short-desc"
+                  placeholder="Brief summary for course cards"
+                  value={courseForm.shortDescription}
+                  onChange={(e) => setCourseForm(prev => ({ ...prev, shortDescription: e.target.value }))}
+                  data-testid="input-course-short-desc"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="course-description">Full Description</Label>
+                <Textarea
+                  id="course-description"
+                  placeholder="Detailed course description..."
+                  rows={4}
+                  value={courseForm.description}
+                  onChange={(e) => setCourseForm(prev => ({ ...prev, description: e.target.value }))}
+                  data-testid="input-course-description"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="course-category">Category</Label>
+                  <Select
+                    value={courseForm.category}
+                    onValueChange={(value) => setCourseForm(prev => ({ ...prev, category: value }))}
+                  >
+                    <SelectTrigger id="course-category" data-testid="select-course-category">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="blockchain">Blockchain</SelectItem>
+                      <SelectItem value="tokenomics">Tokenomics</SelectItem>
+                      <SelectItem value="development">Development</SelectItem>
+                      <SelectItem value="trading">Trading</SelectItem>
+                      <SelectItem value="defi">DeFi</SelectItem>
+                      <SelectItem value="nft">NFT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="course-difficulty">Difficulty</Label>
+                  <Select
+                    value={courseForm.difficulty}
+                    onValueChange={(value) => setCourseForm(prev => ({ ...prev, difficulty: value }))}
+                  >
+                    <SelectTrigger id="course-difficulty" data-testid="select-course-difficulty">
+                      <SelectValue placeholder="Select difficulty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="course-duration">Duration (minutes)</Label>
+                  <Input
+                    id="course-duration"
+                    type="number"
+                    min="1"
+                    value={courseForm.duration}
+                    onChange={(e) => setCourseForm(prev => ({ ...prev, duration: parseInt(e.target.value) || 60 }))}
+                    data-testid="input-course-duration"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="course-reward">$BMT Reward</Label>
+                  <Input
+                    id="course-reward"
+                    type="number"
+                    min="0"
+                    value={courseForm.bmtReward}
+                    onChange={(e) => setCourseForm(prev => ({ ...prev, bmtReward: parseInt(e.target.value) || 0 }))}
+                    data-testid="input-course-reward"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                <div>
+                  <Label>Publish Course</Label>
+                  <p className="text-xs text-muted-foreground">Make this course visible to students</p>
+                </div>
+                <Switch
+                  checked={courseForm.isPublished}
+                  onCheckedChange={(checked) => setCourseForm(prev => ({ ...prev, isPublished: checked }))}
+                  data-testid="switch-course-published"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCourseDialogOpen(false)} data-testid="button-cancel-course">
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveCourse} 
+                disabled={createCourseMutation.isPending || updateCourseMutation.isPending || !courseForm.title}
+                data-testid="button-save-course"
+              >
+                {(createCourseMutation.isPending || updateCourseMutation.isPending) ? 'Saving...' : (editingCourse ? 'Update Course' : 'Create Course')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <TabsContent value="paymaster">
           <div className="grid gap-6 md:grid-cols-2">
