@@ -1274,12 +1274,12 @@ export async function registerRoutes(
       // Mark as processing to prevent double claims
       await storage.updateReward(rewardId, { status: 'processing' });
       
-      // Get token decimals and convert amount
+      // Get token decimals and convert amount (BMT uses 18 decimals)
       const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
-      const decimals = tokenInfo?.decimals || 8;
+      const decimals = tokenInfo?.decimals || 18;
       const amountInWei = parseTokenAmount(reward.amount.toString(), decimals);
       
-      console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT to ${user.walletAddress}`);
+      console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT (${amountInWei} wei, ${decimals} decimals) to ${user.walletAddress}`);
       
       // Execute the REAL blockchain transfer
       let result;
