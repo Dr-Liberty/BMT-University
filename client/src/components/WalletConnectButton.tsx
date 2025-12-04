@@ -5,7 +5,11 @@ import { thirdwebClient, kasplexL2 } from '@/lib/thirdweb';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Play } from 'lucide-react';
 import type { User } from '@shared/schema';
+
+const DEMO_WALLET_ADDRESS = '0xDEMO000000000000000000000000000000000001';
 
 interface WalletConnectButtonProps {
   onConnect?: () => void;
@@ -28,6 +32,7 @@ const wallets = [
 export default function WalletConnectButton({ onConnect, onDisconnect }: WalletConnectButtonProps) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
   
   const account = thirdwebClient ? useActiveAccount() : null;
@@ -35,8 +40,12 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
   useEffect(() => {
     const token = getAuthToken();
+    const demoMode = localStorage.getItem('demoMode') === 'true';
     if (token) {
       verifyExistingSession(token);
+      if (demoMode) {
+        setIsDemoMode(true);
+      }
     }
   }, []);
 
@@ -185,6 +194,114 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     onDisconnect?.();
   };
 
+  const handleDemoConnect = async () => {
+    if (isAuthenticating) return;
+    setIsAuthenticating(true);
+
+    try {
+      const nonceRes = await fetch('/api/auth/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS }),
+      });
+
+      if (!nonceRes.ok) {
+        throw new Error('Failed to get authentication nonce');
+      }
+
+      const { nonce } = await nonceRes.json();
+      const signature = `demo_signature_${nonce}`;
+
+      const verifyRes = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS, signature }),
+      });
+
+      if (!verifyRes.ok) {
+        throw new Error('Failed to verify demo wallet');
+      }
+
+      const { token } = await verifyRes.json();
+
+      setAuthToken(token);
+      localStorage.setItem('demoMode', 'true');
+      setIsAuthenticated(true);
+      setIsDemoMode(true);
+
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+
+      toast({
+        title: 'Demo Mode Active',
+        description: 'Explore BMT University with a demo wallet. No real transactions.',
+      });
+
+      onConnect?.();
+    } catch (error) {
+      console.error('Demo authentication error:', error);
+      toast({
+        title: 'Demo Mode Failed',
+        description: error instanceof Error ? error.message : 'Failed to start demo mode.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleDemoDisconnect = async () => {
+    try {
+      const token = getAuthToken();
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // Ignore logout errors
+    }
+
+    clearAuthToken();
+    localStorage.removeItem('demoMode');
+    setIsAuthenticated(false);
+    setIsDemoMode(false);
+
+    queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+
+    toast({
+      title: 'Demo Mode Ended',
+      description: 'You have exited demo mode.',
+    });
+
+    onDisconnect?.();
+  };
+
+  if (isDemoMode && isAuthenticated) {
+    return (
+      <div data-testid="wallet-connect-container" className="flex items-center gap-2">
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 border border-amber-500/50 rounded-lg">
+          <Play className="h-4 w-4 text-amber-500" />
+          <span className="text-sm font-medium text-amber-500">Demo Mode</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDemoDisconnect}
+          data-testid="button-demo-disconnect"
+        >
+          Exit Demo
+        </Button>
+      </div>
+    );
+  }
+
   if (!thirdwebClient) {
     return (
       <div className="text-muted-foreground text-sm px-3 py-2 bg-muted rounded-lg">
@@ -194,7 +311,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   }
 
   return (
-    <div data-testid="wallet-connect-container">
+    <div data-testid="wallet-connect-container" className="flex items-center gap-2">
       <ConnectButton
         client={thirdwebClient}
         wallets={wallets}
@@ -216,6 +333,18 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
         }}
         onDisconnect={handleDisconnect}
       />
+      {!isAuthenticated && (
+        <Button
+          variant="outline"
+          onClick={handleDemoConnect}
+          disabled={isAuthenticating}
+          data-testid="button-demo-connect"
+          className="flex items-center gap-2"
+        >
+          <Play className="h-4 w-4" />
+          {isAuthenticating ? 'Loading...' : 'Try Demo'}
+        </Button>
+      )}
     </div>
   );
 }
