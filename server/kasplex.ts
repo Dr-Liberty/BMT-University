@@ -255,11 +255,13 @@ export async function transferERC20(
         blockNumber: blockNumber,
       };
     } else {
-      // Transaction submitted but not yet confirmed
-      console.log(`Transaction pending confirmation: ${txHash}`);
+      // Transaction submitted but NOT confirmed - this is a FAILURE
+      // The transaction may have been rejected or the RPC didn't return it
+      console.error(`Transaction NOT confirmed after ${maxAttempts} seconds: ${txHash}`);
       return {
-        success: true,
-        txHash: txHash,
+        success: false,
+        error: 'Transaction not confirmed on chain after 60 seconds. It may have been rejected.',
+        txHash: txHash, // Include hash for debugging
       };
     }
   } catch (error: any) {
