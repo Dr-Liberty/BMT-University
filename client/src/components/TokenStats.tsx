@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, Users, DollarSign, BarChart3, Coins } from 'lucide-react';
-import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
 
 const BMT_TOKEN_ADDRESS = '0x35fBa50F52e2AA305438134c646957066608d976';
 
@@ -86,7 +86,7 @@ export default function TokenStats() {
           <img
             src={bmtLogo}
             alt="$BMT"
-            className="w-12 h-12 rounded-full border-2 border-bmt-orange"
+            className="w-12 h-12 rounded-full border-2 border-[#E8D5B0]"
           />
           <div>
             <h2 className="font-heading font-bold text-2xl text-white">About $BMT</h2>

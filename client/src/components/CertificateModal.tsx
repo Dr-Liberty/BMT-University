@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Download, Share2, ExternalLink, Award, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
 
 export interface Certificate {
   id: string;
@@ -94,7 +94,7 @@ export default function CertificateModal({ certificate, open, onClose }: Certifi
               <img
                 src={bmtLogo}
                 alt="BMT University"
-                className="w-20 h-20 rounded-full border-4 border-kaspa-cyan"
+                className="w-20 h-20 rounded-full border-[3px] border-[#E8D5B0]"
               />
             </div>
 

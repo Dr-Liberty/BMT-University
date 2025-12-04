@@ -2,7 +2,7 @@ import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Shield } from 'lucide-react';
 import WalletConnectButton from './WalletConnectButton';
-import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
 import { getAuthToken } from '@/lib/auth';
 
 const navLinks = [
@@ -32,7 +32,7 @@ export default function Navbar() {
             <img 
               src={bmtLogo} 
               alt="BMT University" 
-              className="w-10 h-10 rounded-full object-cover border-2 border-kaspa-cyan"
+              className="w-10 h-10 rounded-full object-cover border-2 border-[#E8D5B0]"
             />
             <span className="font-heading font-bold text-xl text-white hidden sm:block">
               BMT <span className="text-kaspa-cyan">University</span>

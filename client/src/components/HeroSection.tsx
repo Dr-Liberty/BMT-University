@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BookOpen, Award, Coins } from 'lucide-react';
 import { Link } from 'wouter';
-import bmtLogo from '@assets/BMT_Meme_1_1764788197745.jpg';
+import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764822949579.jpg';
 
 interface StatsData {
   totalCourses: number;
@@ -33,7 +33,7 @@ export default function HeroSection() {
           <img
             src={bmtLogo}
             alt="BMT Logo"
-            className="w-40 h-40 md:w-52 md:h-52 rounded-full object-cover border-4 border-kaspa-cyan shadow-lg shadow-kaspa-cyan/20 mx-auto"
+            className="w-40 h-40 md:w-52 md:h-52 rounded-full object-cover border-[3px] border-[#E8D5B0] shadow-lg shadow-[#E8D5B0]/30 mx-auto"
             data-testid="img-hero-logo"
           />
         </div>
