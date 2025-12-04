@@ -132,6 +132,32 @@ async function getRawNonce(walletAddress: string): Promise<number> {
   }
 }
 
+// Get current network gas price
+async function getNetworkGasPrice(): Promise<bigint> {
+  try {
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_gasPrice',
+        params: [],
+      }),
+    });
+    
+    const data = await response.json();
+    if (data.result) {
+      return BigInt(data.result);
+    }
+    // Fallback to 2000 gwei if RPC fails (Kasplex default)
+    return 2000000000000n;
+  } catch (error) {
+    console.error('Failed to get gas price:', error);
+    return 2000000000000n; // 2000 gwei fallback
+  }
+}
+
 export async function transferERC20(
   tokenContract: string,
   toAddress: string,
@@ -164,24 +190,30 @@ export async function transferERC20(
     const nonce = await getRawNonce(walletAddress);
     console.log(`  Nonce: ${nonce}`);
     
+    // Get current network gas price (Kasplex uses ~2000 gwei)
+    const networkGasPrice = await getNetworkGasPrice();
+    const gasPrice = networkGasPrice * 2n; // Use 2x for faster confirmation
+    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei`);
+    
     // Encode the transfer function call
     const iface = new ethers.Interface(ERC20_ABI);
     const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
     
-    // Prepare raw transaction
+    // Use EIP-1559 transaction (type 2) - works on Kasplex L2
     const tx = {
       to: tokenContract,
       data: data,
       nonce: nonce,
       gasLimit: 100000n, // ERC-20 transfers typically use 50-70k gas
-      gasPrice: 1000000000n, // 1 gwei
+      maxFeePerGas: gasPrice,
+      maxPriorityFeePerGas: gasPrice / 2n,
       chainId: KASPLEX_CHAIN_ID,
-      type: 0, // Legacy transaction type for max compatibility
+      type: 2, // EIP-1559 transaction
     };
     
     // Sign transaction
     const signedTx = await wallet.signTransaction(tx);
-    console.log(`Transaction signed`);
+    console.log(`Transaction signed (EIP-1559)`);
     
     // Send raw transaction via RPC
     const sendResponse = await fetch(KASPLEX_EVM_RPC, {
