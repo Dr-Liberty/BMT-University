@@ -32,7 +32,6 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const account = useActiveAccount();
   const { disconnect } = useDisconnect();
 
-  // Check existing auth on mount
   useEffect(() => {
     const token = getAuthToken();
     if (token) {
@@ -40,7 +39,6 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     }
   }, []);
 
-  // Handle wallet connection state changes
   useEffect(() => {
     if (account?.address && !isAuthenticated && !isAuthenticating) {
       handleAuthentication(account.address);
@@ -70,7 +68,6 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     setIsAuthenticating(true);
 
     try {
-      // Get nonce for signing
       const nonceRes = await fetch('/api/auth/nonce', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,9 +79,6 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       }
 
       const { nonce } = await nonceRes.json();
-      
-      // For thirdweb, we'll use a simplified verification since signing is handled differently
-      // The wallet address is verified through thirdweb's connection process
       const signature = `0xthirdweb_${nonce.slice(0, 32)}`;
 
       const verifyRes = await fetch('/api/auth/verify', {
@@ -102,13 +96,11 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       setAuthToken(token);
       setIsAuthenticated(true);
 
-      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
 
-      // Check for pending referral code
       const pendingReferralCode = localStorage.getItem('pendingReferralCode');
       if (pendingReferralCode) {
         try {
@@ -192,11 +184,10 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     onDisconnect?.();
   };
 
-  // If no thirdweb client ID configured, show placeholder
   if (!import.meta.env.VITE_THIRDWEB_CLIENT_ID) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-        <span>Thirdweb Client ID not configured</span>
+      <div className="text-muted-foreground text-sm px-3 py-2 bg-muted rounded-lg">
+        Configure VITE_THIRDWEB_CLIENT_ID
       </div>
     );
   }
