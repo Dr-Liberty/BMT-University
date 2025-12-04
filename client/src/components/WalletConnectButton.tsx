@@ -337,6 +337,44 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
       
+      // Check for pending referral code from URL param
+      const pendingReferralCode = localStorage.getItem('pendingReferralCode');
+      if (pendingReferralCode) {
+        try {
+          const applyRes = await fetch('/api/referrals/apply', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ code: pendingReferralCode }),
+          });
+          
+          if (applyRes.ok) {
+            localStorage.removeItem('pendingReferralCode');
+            // Invalidate referral queries so UI updates
+            queryClient.invalidateQueries({ queryKey: ['/api/referrals/my-referrer'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/referrals/stats'] });
+            toast({
+              title: 'Referral Applied!',
+              description: 'Your referral code has been applied successfully.',
+            });
+          } else {
+            // Show error and clear the invalid code
+            const errorData = await applyRes.json().catch(() => ({}));
+            localStorage.removeItem('pendingReferralCode');
+            toast({
+              title: 'Referral Code Invalid',
+              description: errorData.error || 'The referral code could not be applied.',
+              variant: 'destructive',
+            });
+          }
+        } catch (err) {
+          console.error('Failed to apply pending referral:', err);
+          localStorage.removeItem('pendingReferralCode');
+        }
+      }
+      
       toast({
         title: 'Wallet Connected',
         description: 'You can now enroll in courses and earn $BMT rewards.',
@@ -397,6 +435,44 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+      
+      // Check for pending referral code from URL param
+      const pendingReferralCode = localStorage.getItem('pendingReferralCode');
+      if (pendingReferralCode) {
+        try {
+          const applyRes = await fetch('/api/referrals/apply', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ code: pendingReferralCode }),
+          });
+          
+          if (applyRes.ok) {
+            localStorage.removeItem('pendingReferralCode');
+            // Invalidate referral queries so UI updates
+            queryClient.invalidateQueries({ queryKey: ['/api/referrals/my-referrer'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/referrals/stats'] });
+            toast({
+              title: 'Referral Applied!',
+              description: 'Your referral code has been applied successfully.',
+            });
+          } else {
+            // Show error and clear the invalid code
+            const errorData = await applyRes.json().catch(() => ({}));
+            localStorage.removeItem('pendingReferralCode');
+            toast({
+              title: 'Referral Code Invalid',
+              description: errorData.error || 'The referral code could not be applied.',
+              variant: 'destructive',
+            });
+          }
+        } catch (err) {
+          console.error('Failed to apply pending referral:', err);
+          localStorage.removeItem('pendingReferralCode');
+        }
+      }
       
       toast({
         title: 'Demo Wallet Connected',

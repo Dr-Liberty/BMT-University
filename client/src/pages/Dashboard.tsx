@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,9 +10,10 @@ import StatsCard from '@/components/StatsCard';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import RewardHistory, { RewardTransaction } from '@/components/RewardHistory';
 import CertificateModal, { Certificate } from '@/components/CertificateModal';
-import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw, Users, Share2, Copy, Check, Gift } from 'lucide-react';
+import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw, Users, Share2, Copy, Check, Gift, PlusCircle } from 'lucide-react';
 import type { Course, Enrollment, Reward, Certificate as CertificateType, ReferralCode, Referral } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface ReferralStats {
   totalReferrals: number;
@@ -115,7 +116,20 @@ export default function Dashboard() {
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [referralCodeInput, setReferralCodeInput] = useState('');
   const { toast } = useToast();
+
+  // Check for referral code in URL on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref');
+    if (refCode) {
+      setReferralCodeInput(refCode);
+      setActiveTab('referrals');
+      // Store in localStorage for after wallet connection
+      localStorage.setItem('pendingReferralCode', refCode);
+    }
+  }, []);
 
   const { data: enrollments = [], isLoading: enrollmentsLoading, error: enrollmentsError, refetch: refetchEnrollments } = useQuery<EnrollmentWithCourse[]>({
     queryKey: ['/api/enrollments'],
@@ -127,7 +141,7 @@ export default function Dashboard() {
     retry: false,
   });
   
-  const { data: referralStats } = useQuery<ReferralStats>({
+  const { data: referralStats, refetch: refetchReferralStats } = useQuery<ReferralStats>({
     queryKey: ['/api/referrals/stats'],
     retry: false,
   });
@@ -136,10 +150,41 @@ export default function Dashboard() {
     queryKey: ['/api/referrals/settings'],
   });
   
-  const { data: referralsList = [] } = useQuery<ReferralWithUser[]>({
+  const { data: referralsList = [], refetch: refetchReferralsList } = useQuery<ReferralWithUser[]>({
     queryKey: ['/api/referrals/list'],
     retry: false,
   });
+  
+  const { data: myReferrer } = useQuery<Referral | null>({
+    queryKey: ['/api/referrals/my-referrer'],
+    retry: false,
+  });
+  
+  const applyReferralMutation = useMutation({
+    mutationFn: async (code: string) => {
+      return apiRequest('POST', '/api/referrals/apply', { code });
+    },
+    onSuccess: () => {
+      toast({ title: 'Referral applied!', description: 'You have successfully been referred!' });
+      setReferralCodeInput('');
+      localStorage.removeItem('pendingReferralCode');
+      queryClient.invalidateQueries({ queryKey: ['/api/referrals/my-referrer'] });
+      refetchReferralStats();
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Failed to apply referral', 
+        description: error.message || 'Could not apply referral code', 
+        variant: 'destructive' 
+      });
+    },
+  });
+  
+  const handleApplyReferral = () => {
+    if (referralCodeInput.trim()) {
+      applyReferralMutation.mutate(referralCodeInput.trim());
+    }
+  };
 
   const { data: allCourses = [] } = useQuery<Course[]>({
     queryKey: ['/api/courses'],
@@ -509,6 +554,65 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
                 </div>
+                
+                {!myReferrer && (
+                  <Card className="border-dashed border-2 border-muted-foreground/30">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white">
+                        <PlusCircle className="w-5 h-5 text-kaspa-cyan" />
+                        Have a Referral Code?
+                      </CardTitle>
+                      <CardDescription>
+                        Enter a friend's referral code to get a {referralSettings?.refereeRewardAmount || 0} $BMT bonus when you {referralSettings?.triggerAction === 'enrollment' ? 'enroll in your first course' : 'complete your first course'}!
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter referral code"
+                          value={referralCodeInput}
+                          onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                          className="font-mono"
+                          data-testid="input-apply-referral"
+                        />
+                        <Button
+                          onClick={handleApplyReferral}
+                          disabled={!referralCodeInput.trim() || applyReferralMutation.isPending}
+                          data-testid="button-apply-referral"
+                        >
+                          {applyReferralMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Apply'
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {myReferrer && (
+                  <Card className="border-kaspa-green/30 bg-kaspa-green/5">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-kaspa-green/20 flex items-center justify-center">
+                          <Check className="w-5 h-5 text-kaspa-green" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-white">You were referred!</p>
+                          <p className="text-sm text-muted-foreground">
+                            {myReferrer.status === 'rewarded' 
+                              ? 'Your referral bonus has been awarded!'
+                              : myReferrer.status === 'qualified'
+                              ? 'Your referral bonus is being processed...'
+                              : `Complete your first ${referralSettings?.triggerAction === 'enrollment' ? 'enrollment' : 'course'} to unlock your bonus!`
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 
                 {referralsList.length > 0 && (
                   <Card>

@@ -592,6 +592,15 @@ export async function registerRoutes(
                 });
                 
                 console.log(`[Auto-Reward] Issued certificate and ${course.bmtReward} BMT for course completion without quiz: user=${req.user.id}, course=${course.id}`);
+                
+                // Check for referral qualification on first course completion
+                const referral = await storage.getReferralByReferredUser(req.user.id);
+                if (referral && referral.status === 'pending') {
+                  const settings = await storage.getReferralSettings();
+                  if (settings?.isEnabled && settings.triggerAction === 'completion') {
+                    await processReferralQualification(referral.id, 'completion', settings);
+                  }
+                }
               }
             }
           }
@@ -1084,6 +1093,17 @@ export async function registerRoutes(
               completedAt: new Date(),
             });
           }
+          
+          // Check for referral qualification on first course completion
+          if (!alreadyRewarded) {
+            const referral = await storage.getReferralByReferredUser(req.user.id);
+            if (referral && referral.status === 'pending') {
+              const settings = await storage.getReferralSettings();
+              if (settings?.isEnabled && settings.triggerAction === 'completion') {
+                await processReferralQualification(referral.id, 'completion', settings);
+              }
+            }
+          }
         }
       }
       
@@ -1143,6 +1163,20 @@ export async function registerRoutes(
         userId: req.user.id,
         courseId: req.params.courseId,
       });
+      
+      // Check if this is the user's first enrollment and trigger referral rewards
+      const allEnrollments = await storage.getEnrollmentsByUser(req.user.id);
+      if (allEnrollments.length === 1) {
+        // First enrollment - check for pending referral
+        const referral = await storage.getReferralByReferredUser(req.user.id);
+        if (referral && referral.status === 'pending') {
+          const settings = await storage.getReferralSettings();
+          if (settings?.isEnabled && settings.triggerAction === 'enrollment') {
+            // Process the referral qualification
+            await processReferralQualification(referral.id, 'enrollment', settings);
+          }
+        }
+      }
       
       res.status(201).json(enrollment);
     } catch (error) {
@@ -2170,6 +2204,31 @@ export async function registerRoutes(
     }
   });
   
+  // Get the referral record for current user (if they were referred)
+  app.get("/api/referrals/my-referrer", authMiddleware, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const referral = await storage.getReferralByReferredUser(userId);
+      
+      if (!referral) {
+        return res.json(null);
+      }
+      
+      // Get referrer info
+      const referrer = await storage.getUser(referral.referrerId);
+      res.json({
+        ...referral,
+        referrer: referrer ? {
+          displayName: referrer.displayName,
+          walletAddress: referrer.walletAddress?.slice(0, 6) + '...' + referrer.walletAddress?.slice(-4),
+        } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching my referrer:", error);
+      res.status(500).json({ error: "Failed to fetch referrer info" });
+    }
+  });
+  
   // Get user's referrals list
   app.get("/api/referrals/list", authMiddleware, async (req: any, res) => {
     try {
@@ -2306,45 +2365,66 @@ export async function registerRoutes(
     action: string,
     settings: Awaited<ReturnType<typeof storage.getReferralSettings>>
   ) {
-    if (!settings) return;
+    if (!settings) {
+      console.log(`[Referral] No settings found, skipping referral qualification`);
+      return;
+    }
     
-    const referral = await storage.getReferral(referralId, '');
+    // Get reward amounts with strict numeric validation
+    const referrerAmount = Number.isFinite(Number(settings.referrerRewardAmount)) 
+      ? Number(settings.referrerRewardAmount) 
+      : 0;
+    const refereeAmount = Number.isFinite(Number(settings.refereeRewardAmount)) 
+      ? Number(settings.refereeRewardAmount) 
+      : 0;
     
-    // Get the actual referral by ID (since getReferral takes different params)
-    const allReferralsForReferrer = await storage.getReferralsByReferrer('*');
-    // This is a workaround - let's update the referral directly
-    
-    // Actually, let's use updateReferral directly with the ID
+    // Update referral to qualified status with action
     const updatedReferral = await storage.updateReferral(referralId, {
       status: 'qualified',
       qualifyingAction: action,
       qualifiedAt: new Date(),
     });
     
-    if (!updatedReferral) return;
+    if (!updatedReferral) {
+      console.log(`[Referral] Failed to update referral ${referralId}`);
+      return;
+    }
     
-    // Create reward for the referrer
-    const referrerReward = await storage.createReward({
-      userId: updatedReferral.referrerId,
-      amount: settings.referrerRewardAmount,
-      type: 'referral_bonus',
-    });
+    let referrerRewardId: string | undefined;
+    let refereeRewardId: string | undefined;
     
-    // Create reward for the referee (new user)
-    const refereeReward = await storage.createReward({
-      userId: updatedReferral.referredUserId,
-      amount: settings.refereeRewardAmount,
-      type: 'referral_welcome_bonus',
-    });
+    // Create reward for the referrer (only if amount is a valid positive number)
+    if (referrerAmount > 0) {
+      const referrerReward = await storage.createReward({
+        userId: updatedReferral.referrerId,
+        amount: referrerAmount,
+        type: 'referral_bonus',
+      });
+      referrerRewardId = referrerReward.id;
+    }
     
-    // Update referral with reward IDs and mark as rewarded
-    await storage.updateReferral(referralId, {
+    // Create reward for the referee (new user) (only if amount is a valid positive number)
+    if (refereeAmount > 0) {
+      const refereeReward = await storage.createReward({
+        userId: updatedReferral.referredUserId,
+        amount: refereeAmount,
+        type: 'referral_welcome_bonus',
+      });
+      refereeRewardId = refereeReward.id;
+    }
+    
+    // Mark referral as rewarded (even if amounts were 0, the referral is complete)
+    // Only store reward IDs if rewards were actually created
+    const finalUpdate: any = { 
       status: 'rewarded',
-      referrerRewardId: referrerReward.id,
-      refereeRewardId: refereeReward.id,
-    });
+      qualifyingAction: action,
+    };
+    if (referrerRewardId) finalUpdate.referrerRewardId = referrerRewardId;
+    if (refereeRewardId) finalUpdate.refereeRewardId = refereeRewardId;
     
-    console.log(`[Referral] Processed referral ${referralId}: Referrer reward ${referrerReward.id}, Referee reward ${refereeReward.id}`);
+    await storage.updateReferral(referralId, finalUpdate);
+    
+    console.log(`[Referral] Processed referral ${referralId}: Referrer reward ${referrerRewardId ?? 'none (0 amount)'}, Referee reward ${refereeRewardId ?? 'none (0 amount)'}`);
   }
   
   // Admin: Get all referrals overview

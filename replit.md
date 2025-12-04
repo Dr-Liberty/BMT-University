@@ -16,6 +16,13 @@ BMT University is a blockchain-powered learning management system built on the K
 - **Public Verification**: Verify certificates via public `/verify/:code` page
 - **Analytics Dashboard**: Real-time stats, course leaderboard, activity feed
 - **About $BMT Page**: Editable content with roadmap display
+- **Referral System**: Complete referral flow with customizable rewards
+  - Unique referral codes per user with shareable links
+  - URL parameter support (?ref=CODE) for deep linking
+  - Auto-apply referrals after wallet connection
+  - Admin panel for configuring referrer/referee reward amounts
+  - Trigger rewards on enrollment or course completion
+  - Dashboard tab showing referral stats and code sharing
 
 ### Known Limitations (For Production)
 - **PostgreSQL Storage**: Data now persists in PostgreSQL database (via Neon serverless)
@@ -116,6 +123,17 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 **Reward Endpoints:**
 - `GET /api/users/:userId/rewards` - Get user rewards
 - `POST /api/rewards/:id/claim` - Claim pending reward
+
+**Referral Endpoints:**
+- `GET /api/referrals/settings` - Get referral settings (public)
+- `GET /api/referrals/my-code` - Get or create user's referral code
+- `GET /api/referrals/my-referrer` - Check if user was referred
+- `GET /api/referrals/stats` - Get user's referral stats
+- `GET /api/referrals/list` - Get user's referrals list
+- `GET /api/referrals/validate/:code` - Validate a referral code
+- `POST /api/referrals/apply` - Apply a referral code
+- `PUT /api/admin/referrals/settings` - Update referral settings (admin)
+- `GET /api/admin/referrals` - Get admin referral overview
 
 **Analytics Endpoints:**
 - `GET /api/stats` - Platform-wide statistics
