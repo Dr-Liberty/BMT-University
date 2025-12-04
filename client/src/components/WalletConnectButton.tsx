@@ -29,7 +29,8 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { toast } = useToast();
-  const account = useActiveAccount();
+  
+  const account = thirdwebClient ? useActiveAccount() : null;
   const { disconnect } = useDisconnect();
 
   useEffect(() => {
@@ -184,7 +185,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     onDisconnect?.();
   };
 
-  if (!import.meta.env.VITE_THIRDWEB_CLIENT_ID) {
+  if (!thirdwebClient) {
     return (
       <div className="text-muted-foreground text-sm px-3 py-2 bg-muted rounded-lg">
         Configure VITE_THIRDWEB_CLIENT_ID

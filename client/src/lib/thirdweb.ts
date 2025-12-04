@@ -1,8 +1,10 @@
 import { createThirdwebClient, defineChain } from "thirdweb";
 
-export const thirdwebClient = createThirdwebClient({
-  clientId: import.meta.env.VITE_THIRDWEB_CLIENT_ID || "",
-});
+const clientId = import.meta.env.VITE_THIRDWEB_CLIENT_ID;
+
+export const thirdwebClient = clientId 
+  ? createThirdwebClient({ clientId })
+  : null;
 
 export const kasplexL2 = defineChain({
   id: 202555,
