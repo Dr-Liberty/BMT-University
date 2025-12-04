@@ -2089,6 +2089,31 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update referral settings" });
     }
   });
+
+  // Admin: Get referral stats overview
+  app.get("/api/admin/referrals/stats", adminMiddleware, async (req: any, res) => {
+    try {
+      const referrals = await storage.getAllReferrals();
+      
+      const pendingReferrals = referrals.filter(r => r.status === 'pending').length;
+      const qualifiedReferrals = referrals.filter(r => r.status === 'qualified').length;
+      const rewardedReferrals = referrals.filter(r => r.status === 'rewarded').length;
+      const totalBmtPaid = referrals
+        .filter(r => r.status === 'rewarded')
+        .reduce((sum, r) => sum + (r.referrerRewardAmount || 0) + (r.refereeRewardAmount || 0), 0);
+      
+      res.json({
+        totalReferrals: referrals.length,
+        pendingReferrals,
+        qualifiedReferrals,
+        rewardedReferrals,
+        totalBmtPaid,
+      });
+    } catch (error) {
+      console.error("Error fetching admin referral stats:", error);
+      res.status(500).json({ error: "Failed to fetch referral stats" });
+    }
+  });
   
   // Get or create user's referral code
   app.get("/api/referrals/my-code", authMiddleware, async (req: any, res) => {

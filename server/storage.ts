@@ -164,6 +164,7 @@ export interface IStorage {
   createReferral(data: InsertReferral): Promise<Referral>;
   updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined>;
   getReferralStats(userId: string): Promise<{ totalReferrals: number; pendingReferrals: number; qualifiedReferrals: number; rewardedReferrals: number; totalBmtEarned: number }>;
+  getAllReferrals(): Promise<Referral[]>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -1064,6 +1065,10 @@ export class DatabaseStorage implements IStorage {
       rewardedReferrals,
       totalBmtEarned,
     };
+  }
+
+  async getAllReferrals(): Promise<Referral[]> {
+    return await db.select().from(referrals).orderBy(desc(referrals.createdAt));
   }
 }
 

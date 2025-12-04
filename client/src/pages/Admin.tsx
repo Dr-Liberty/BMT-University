@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout, Share2, Gift, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -105,6 +105,21 @@ interface TokenData {
   holders: number;
   volume24h?: number;
   priceChange24h?: number;
+}
+
+interface ReferralSettingsData {
+  isEnabled: boolean;
+  referrerRewardAmount: number;
+  refereeRewardAmount: number;
+  triggerAction: string;
+}
+
+interface ReferralStats {
+  totalReferrals: number;
+  pendingReferrals: number;
+  qualifiedReferrals: number;
+  rewardedReferrals: number;
+  totalBmtPaid: number;
 }
 
 const defaultCourseForm: CourseFormData = {
@@ -273,6 +288,39 @@ export default function Admin() {
     },
   });
 
+  const [referralSettingsForm, setReferralSettingsForm] = useState<ReferralSettingsData>({
+    isEnabled: true,
+    referrerRewardAmount: 500,
+    refereeRewardAmount: 250,
+    triggerAction: 'enrollment',
+  });
+
+  const { data: referralSettings, isLoading: referralSettingsLoading } = useQuery<ReferralSettingsData>({
+    queryKey: ['/api/referrals/settings'],
+  });
+
+  const { data: adminReferralStats, isLoading: adminReferralStatsLoading } = useQuery<ReferralStats>({
+    queryKey: ['/api/admin/referrals/stats'],
+  });
+
+  const updateReferralSettingsMutation = useMutation({
+    mutationFn: async (data: ReferralSettingsData) => {
+      return apiRequest('PUT', '/api/admin/referrals/settings', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/referrals/settings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/referrals/stats'] });
+      toast({ title: "Referral settings saved", description: "Referral program settings updated successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update referral settings", variant: "destructive" });
+    },
+  });
+
+  const handleSaveReferralSettings = () => {
+    updateReferralSettingsMutation.mutate(referralSettingsForm);
+  };
+
   const handleOpenCourseDialog = (course?: CourseWithStats) => {
     if (course) {
       setEditingCourse(course.id);
@@ -356,6 +404,10 @@ export default function Admin() {
           <TabsTrigger value="payouts" data-testid="tab-payouts">
             <ArrowUpRight className="w-4 h-4 mr-2" />
             Payouts
+          </TabsTrigger>
+          <TabsTrigger value="referrals" data-testid="tab-referrals">
+            <Share2 className="w-4 h-4 mr-2" />
+            Referrals
           </TabsTrigger>
         </TabsList>
 
@@ -1159,6 +1211,161 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="referrals">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Share2 className="w-5 h-5" />
+                  Referral Program Settings
+                </CardTitle>
+                <CardDescription>
+                  Configure how referrals work and the rewards for both referrers and referees.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-base">Enable Referral Program</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Allow users to invite others and earn rewards
+                    </p>
+                  </div>
+                  <Switch
+                    checked={referralSettingsForm.isEnabled}
+                    onCheckedChange={(checked) => setReferralSettingsForm(prev => ({ ...prev, isEnabled: checked }))}
+                    data-testid="switch-referral-enabled"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="referrerReward">Referrer Reward ($BMT)</Label>
+                    <Input
+                      id="referrerReward"
+                      type="number"
+                      min="0"
+                      value={referralSettingsForm.referrerRewardAmount}
+                      onChange={(e) => setReferralSettingsForm(prev => ({ ...prev, referrerRewardAmount: parseInt(e.target.value) || 0 }))}
+                      data-testid="input-referrer-reward"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Amount the referrer earns when their invite is successful
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="refereeReward">Referee Reward ($BMT)</Label>
+                    <Input
+                      id="refereeReward"
+                      type="number"
+                      min="0"
+                      value={referralSettingsForm.refereeRewardAmount}
+                      onChange={(e) => setReferralSettingsForm(prev => ({ ...prev, refereeRewardAmount: parseInt(e.target.value) || 0 }))}
+                      data-testid="input-referee-reward"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Bonus the new user receives for signing up with a referral
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="triggerAction">Reward Trigger</Label>
+                  <Select
+                    value={referralSettingsForm.triggerAction}
+                    onValueChange={(value) => setReferralSettingsForm(prev => ({ ...prev, triggerAction: value }))}
+                  >
+                    <SelectTrigger id="triggerAction" data-testid="select-trigger-action">
+                      <SelectValue placeholder="Select when to trigger rewards" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enrollment">When Referee Enrolls in First Course</SelectItem>
+                      <SelectItem value="completion">When Referee Completes First Course</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Define when the referral rewards should be paid out
+                  </p>
+                </div>
+
+                <Button 
+                  onClick={handleSaveReferralSettings}
+                  disabled={updateReferralSettingsMutation.isPending}
+                  data-testid="button-save-referral-settings"
+                >
+                  {updateReferralSettingsMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Referral Stats
+                </CardTitle>
+                <CardDescription>
+                  Overview of referral program performance
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {adminReferralStatsLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <UserPlus className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">Total Referrals</span>
+                      </div>
+                      <span className="font-semibold">{adminReferralStats?.totalReferrals || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-yellow-500" />
+                        <span className="text-sm">Pending</span>
+                      </div>
+                      <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600">
+                        {adminReferralStats?.pendingReferrals || 0}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <span className="text-sm">Rewarded</span>
+                      </div>
+                      <Badge variant="outline" className="bg-green-500/10 text-green-600">
+                        {adminReferralStats?.rewardedReferrals || 0}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <div className="flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-medium">Total $BMT Paid</span>
+                      </div>
+                      <span className="font-bold text-primary">{(adminReferralStats?.totalBmtPaid || 0).toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
