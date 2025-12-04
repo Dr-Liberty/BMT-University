@@ -233,6 +233,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       setIsConnected(true);
       setShowWalletSelector(false);
       
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
@@ -293,6 +294,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       setIsConnected(true);
       setShowWalletSelector(false);
       
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
@@ -330,6 +332,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       setIsConnected(false);
       setFullAddress('');
       
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
