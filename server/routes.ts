@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { updateAboutPageSchema, insertCourseSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
+import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
@@ -171,7 +171,7 @@ export async function registerRoutes(
       const lessons = await storage.getLessonsByCourse(req.params.id);
       const quiz = await storage.getQuizByCourse(req.params.id);
       
-      let quizWithQuestions: (typeof quiz & { questions?: unknown[] }) | null = quiz;
+      let quizWithQuestions: (typeof quiz & { questions?: unknown[] }) | null = quiz || null;
       if (quiz) {
         const questions = await storage.getQuizQuestions(quiz.id);
         const safeQuestions = questions.map(q => ({
@@ -228,6 +228,129 @@ export async function registerRoutes(
     }
   });
 
+  // ============ MODULES ============
+  app.get("/api/courses/:courseId/modules", async (req, res) => {
+    try {
+      const modules = await storage.getModulesByCourse(req.params.courseId);
+      res.json(modules);
+    } catch (error) {
+      console.error("Error fetching modules:", error);
+      res.status(500).json({ error: "Failed to fetch modules" });
+    }
+  });
+
+  app.get("/api/modules/:id", async (req, res) => {
+    try {
+      const module = await storage.getModule(req.params.id);
+      if (!module) {
+        return res.status(404).json({ error: "Module not found" });
+      }
+      const lessons = await storage.getLessonsByModule(req.params.id);
+      const quizzes = await storage.getQuizzesByModule(req.params.id);
+      res.json({ ...module, lessons, quizzes });
+    } catch (error) {
+      console.error("Error fetching module:", error);
+      res.status(500).json({ error: "Failed to fetch module" });
+    }
+  });
+
+  app.post("/api/courses/:courseId/modules", authMiddleware, async (req: any, res) => {
+    try {
+      const course = await storage.getCourse(req.params.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to add modules" });
+      }
+      
+      const existingModules = await storage.getModulesByCourse(req.params.courseId);
+      const orderIndex = existingModules.length;
+      
+      const result = insertModuleSchema.safeParse({
+        ...req.body,
+        courseId: req.params.courseId,
+        orderIndex,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).message });
+      }
+      
+      const module = await storage.createModule(result.data);
+      res.status(201).json(module);
+    } catch (error) {
+      console.error("Error creating module:", error);
+      res.status(500).json({ error: "Failed to create module" });
+    }
+  });
+
+  app.put("/api/modules/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const module = await storage.getModule(req.params.id);
+      if (!module) {
+        return res.status(404).json({ error: "Module not found" });
+      }
+      const course = await storage.getCourse(module.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to edit this module" });
+      }
+      
+      const updated = await storage.updateModule(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating module:", error);
+      res.status(500).json({ error: "Failed to update module" });
+    }
+  });
+
+  app.delete("/api/modules/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const module = await storage.getModule(req.params.id);
+      if (!module) {
+        return res.status(404).json({ error: "Module not found" });
+      }
+      const course = await storage.getCourse(module.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to delete this module" });
+      }
+      
+      await storage.deleteModule(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting module:", error);
+      res.status(500).json({ error: "Failed to delete module" });
+    }
+  });
+
+  app.post("/api/courses/:courseId/modules/reorder", authMiddleware, async (req: any, res) => {
+    try {
+      const course = await storage.getCourse(req.params.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to reorder modules" });
+      }
+      
+      const { moduleIds } = req.body;
+      if (!Array.isArray(moduleIds)) {
+        return res.status(400).json({ error: "moduleIds must be an array" });
+      }
+      
+      await storage.reorderModules(req.params.courseId, moduleIds);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error reordering modules:", error);
+      res.status(500).json({ error: "Failed to reorder modules" });
+    }
+  });
+
   // ============ LESSONS ============
   app.get("/api/courses/:courseId/lessons", async (req, res) => {
     try {
@@ -236,6 +359,29 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching lessons:", error);
       res.status(500).json({ error: "Failed to fetch lessons" });
+    }
+  });
+
+  app.get("/api/modules/:moduleId/lessons", async (req, res) => {
+    try {
+      const lessons = await storage.getLessonsByModule(req.params.moduleId);
+      res.json(lessons);
+    } catch (error) {
+      console.error("Error fetching lessons:", error);
+      res.status(500).json({ error: "Failed to fetch lessons" });
+    }
+  });
+
+  app.get("/api/lessons/:id", async (req, res) => {
+    try {
+      const lesson = await storage.getLesson(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      res.json(lesson);
+    } catch (error) {
+      console.error("Error fetching lesson:", error);
+      res.status(500).json({ error: "Failed to fetch lesson" });
     }
   });
 
@@ -249,9 +395,13 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Not authorized to add lessons" });
       }
       
+      const existingLessons = await storage.getLessonsByCourse(req.params.courseId);
+      const orderIndex = existingLessons.length;
+      
       const result = insertLessonSchema.safeParse({
         ...req.body,
         courseId: req.params.courseId,
+        orderIndex,
       });
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).message });
@@ -262,6 +412,154 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating lesson:", error);
       res.status(500).json({ error: "Failed to create lesson" });
+    }
+  });
+
+  app.post("/api/modules/:moduleId/lessons", authMiddleware, async (req: any, res) => {
+    try {
+      const module = await storage.getModule(req.params.moduleId);
+      if (!module) {
+        return res.status(404).json({ error: "Module not found" });
+      }
+      const course = await storage.getCourse(module.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to add lessons" });
+      }
+      
+      const existingLessons = await storage.getLessonsByModule(req.params.moduleId);
+      const orderIndex = existingLessons.length;
+      
+      const result = insertLessonSchema.safeParse({
+        ...req.body,
+        courseId: module.courseId,
+        moduleId: req.params.moduleId,
+        orderIndex,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).message });
+      }
+      
+      const lesson = await storage.createLesson(result.data);
+      res.status(201).json(lesson);
+    } catch (error) {
+      console.error("Error creating lesson:", error);
+      res.status(500).json({ error: "Failed to create lesson" });
+    }
+  });
+
+  app.put("/api/lessons/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const lesson = await storage.getLesson(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      const course = await storage.getCourse(lesson.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to edit this lesson" });
+      }
+      
+      const updated = await storage.updateLesson(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating lesson:", error);
+      res.status(500).json({ error: "Failed to update lesson" });
+    }
+  });
+
+  app.delete("/api/lessons/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const lesson = await storage.getLesson(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      const course = await storage.getCourse(lesson.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to delete this lesson" });
+      }
+      
+      await storage.deleteLesson(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting lesson:", error);
+      res.status(500).json({ error: "Failed to delete lesson" });
+    }
+  });
+
+  app.post("/api/modules/:moduleId/lessons/reorder", authMiddleware, async (req: any, res) => {
+    try {
+      const module = await storage.getModule(req.params.moduleId);
+      if (!module) {
+        return res.status(404).json({ error: "Module not found" });
+      }
+      const course = await storage.getCourse(module.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to reorder lessons" });
+      }
+      
+      const { lessonIds } = req.body;
+      if (!Array.isArray(lessonIds)) {
+        return res.status(400).json({ error: "lessonIds must be an array" });
+      }
+      
+      await storage.reorderLessons(req.params.moduleId, lessonIds);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error reordering lessons:", error);
+      res.status(500).json({ error: "Failed to reorder lessons" });
+    }
+  });
+
+  // ============ LESSON PROGRESS ============
+  app.get("/api/courses/:courseId/progress", authMiddleware, async (req: any, res) => {
+    try {
+      const progress = await storage.getLessonProgressByCourse(req.user.id, req.params.courseId);
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching progress:", error);
+      res.status(500).json({ error: "Failed to fetch progress" });
+    }
+  });
+
+  app.post("/api/lessons/:id/complete", authMiddleware, async (req: any, res) => {
+    try {
+      const progress = await storage.markLessonComplete(req.user.id, req.params.id);
+      
+      // Update enrollment progress
+      const lesson = await storage.getLesson(req.params.id);
+      if (lesson) {
+        const enrollment = await storage.getEnrollment(req.user.id, lesson.courseId);
+        if (enrollment) {
+          const allLessons = await storage.getLessonsByCourse(lesson.courseId);
+          const completedProgress = await storage.getLessonProgressByCourse(req.user.id, lesson.courseId);
+          const completedCount = completedProgress.filter(p => p.status === 'completed').length;
+          const progressPercent = Math.round((completedCount / allLessons.length) * 100);
+          
+          const completedLessons = [...new Set([...(enrollment.completedLessons || []), req.params.id])];
+          await storage.updateEnrollment(enrollment.id, {
+            progress: progressPercent,
+            completedLessons,
+            currentLessonId: req.params.id,
+            lastAccessedAt: new Date(),
+          });
+        }
+      }
+      
+      res.json(progress);
+    } catch (error) {
+      console.error("Error completing lesson:", error);
+      res.status(500).json({ error: "Failed to complete lesson" });
     }
   });
 
@@ -310,6 +608,196 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating quiz:", error);
       res.status(500).json({ error: "Failed to create quiz" });
+    }
+  });
+
+  app.get("/api/courses/:courseId/quizzes", async (req, res) => {
+    try {
+      const quizzes = await storage.getQuizzesByCourse(req.params.courseId);
+      res.json(quizzes);
+    } catch (error) {
+      console.error("Error fetching quizzes:", error);
+      res.status(500).json({ error: "Failed to fetch quizzes" });
+    }
+  });
+
+  app.get("/api/quizzes/:id", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const questions = await storage.getQuizQuestions(quiz.id);
+      
+      const safeQuestions = questions.map(q => ({
+        ...q,
+        options: q.options.map(o => ({ id: o.id, text: o.text })),
+      }));
+      
+      res.json({ ...quiz, questions: safeQuestions });
+    } catch (error) {
+      console.error("Error fetching quiz:", error);
+      res.status(500).json({ error: "Failed to fetch quiz" });
+    }
+  });
+
+  app.get("/api/quizzes/:id/full", authMiddleware, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to view full quiz" });
+      }
+      
+      const questions = await storage.getQuizQuestions(quiz.id);
+      res.json({ ...quiz, questions });
+    } catch (error) {
+      console.error("Error fetching quiz:", error);
+      res.status(500).json({ error: "Failed to fetch quiz" });
+    }
+  });
+
+  app.put("/api/quizzes/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to edit this quiz" });
+      }
+      
+      const updated = await storage.updateQuiz(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating quiz:", error);
+      res.status(500).json({ error: "Failed to update quiz" });
+    }
+  });
+
+  app.delete("/api/quizzes/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to delete this quiz" });
+      }
+      
+      await storage.deleteQuiz(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting quiz:", error);
+      res.status(500).json({ error: "Failed to delete quiz" });
+    }
+  });
+
+  // ============ QUIZ QUESTIONS ============
+  app.get("/api/quizzes/:quizId/questions", authMiddleware, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to view questions" });
+      }
+      
+      const questions = await storage.getQuizQuestions(req.params.quizId);
+      res.json(questions);
+    } catch (error) {
+      console.error("Error fetching questions:", error);
+      res.status(500).json({ error: "Failed to fetch questions" });
+    }
+  });
+
+  app.post("/api/quizzes/:quizId/questions", authMiddleware, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to add questions" });
+      }
+      
+      const existingQuestions = await storage.getQuizQuestions(req.params.quizId);
+      const orderIndex = existingQuestions.length;
+      
+      const result = insertQuizQuestionSchema.safeParse({
+        ...req.body,
+        quizId: req.params.quizId,
+        orderIndex,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: fromError(result.error).message });
+      }
+      
+      const question = await storage.createQuizQuestion(result.data);
+      res.status(201).json(question);
+    } catch (error) {
+      console.error("Error creating question:", error);
+      res.status(500).json({ error: "Failed to create question" });
+    }
+  });
+
+  app.put("/api/questions/:id", authMiddleware, async (req: any, res) => {
+    try {
+      const questions = await storage.getQuizQuestions(req.body.quizId);
+      const question = questions.find(q => q.id === req.params.id);
+      if (!question) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+      const quiz = await storage.getQuiz(question.quizId);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const course = await storage.getCourse(quiz.courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      if (course.instructorId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Not authorized to edit this question" });
+      }
+      
+      const updated = await storage.updateQuizQuestion(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating question:", error);
+      res.status(500).json({ error: "Failed to update question" });
+    }
+  });
+
+  app.delete("/api/questions/:id", authMiddleware, async (req: any, res) => {
+    try {
+      await storage.deleteQuizQuestion(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      res.status(500).json({ error: "Failed to delete question" });
     }
   });
 

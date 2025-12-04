@@ -10,11 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import CourseBuilder from "@/components/CourseBuilder";
 
 interface PaymasterConfig {
   configured: boolean;
@@ -125,6 +126,7 @@ export default function Admin() {
   const [courseDialogOpen, setCourseDialogOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<string | null>(null);
   const [courseForm, setCourseForm] = useState<CourseFormData>(defaultCourseForm);
+  const [buildingCourseId, setBuildingCourseId] = useState<string | null>(null);
 
   const { data: paymasterConfig, isLoading: configLoading } = useQuery<PaymasterConfig>({
     queryKey: ['/api/admin/paymaster'],
@@ -358,89 +360,107 @@ export default function Admin() {
         </TabsList>
 
         <TabsContent value="courses">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Course Management</CardTitle>
-                  <CardDescription>
-                    Create, edit, and manage courses. Add quizzes and set $BMT rewards.
-                  </CardDescription>
+          {buildingCourseId ? (
+            <CourseBuilder 
+              courseId={buildingCourseId} 
+              onBack={() => setBuildingCourseId(null)} 
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Course Management</CardTitle>
+                    <CardDescription>
+                      Create, edit, and manage courses. Add quizzes and set $BMT rewards.
+                    </CardDescription>
+                  </div>
+                  <Button onClick={() => handleOpenCourseDialog()} data-testid="button-create-course">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Course
+                  </Button>
                 </div>
-                <Button onClick={() => handleOpenCourseDialog()} data-testid="button-create-course">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Course
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {coursesLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
-                </div>
-              ) : courses && courses.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Course</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Difficulty</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead className="text-right">Reward</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {courses.map((course) => (
-                      <TableRow key={course.id} data-testid={`row-course-manage-${course.id}`}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{course.title}</p>
-                            <p className="text-xs text-muted-foreground truncate max-w-xs">
-                              {course.shortDescription || course.description?.slice(0, 50)}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{course.category || 'General'}</Badge>
-                        </TableCell>
-                        <TableCell className="capitalize">{course.difficulty || 'Beginner'}</TableCell>
-                        <TableCell>{course.duration || 60} min</TableCell>
-                        <TableCell className="text-right font-semibold">{course.bmtReward} $BMT</TableCell>
-                        <TableCell>
-                          {course.isPublished ? (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
-                              Published
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline">Draft</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenCourseDialog(course)}
-                            data-testid={`button-edit-course-${course.id}`}
-                          >
-                            <Edit className="w-4 h-4 mr-1" />
-                            Edit
-                          </Button>
-                        </TableCell>
+              </CardHeader>
+              <CardContent>
+                {coursesLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
+                  </div>
+                ) : courses && courses.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Course</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Difficulty</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead className="text-right">Reward</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No courses yet</p>
-                  <p className="text-sm">Create your first course to get started</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {courses.map((course) => (
+                        <TableRow key={course.id} data-testid={`row-course-manage-${course.id}`}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{course.title}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-xs">
+                                {course.shortDescription || course.description?.slice(0, 50)}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{course.category || 'General'}</Badge>
+                          </TableCell>
+                          <TableCell className="capitalize">{course.difficulty || 'Beginner'}</TableCell>
+                          <TableCell>{course.duration || 60} min</TableCell>
+                          <TableCell className="text-right font-semibold">{course.bmtReward} $BMT</TableCell>
+                          <TableCell>
+                            {course.isPublished ? (
+                              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
+                                Published
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">Draft</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => setBuildingCourseId(course.id)}
+                                data-testid={`button-build-course-${course.id}`}
+                              >
+                                <Layout className="w-4 h-4 mr-1" />
+                                Build
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenCourseDialog(course)}
+                                data-testid={`button-edit-course-${course.id}`}
+                              >
+                                <Edit className="w-4 h-4 mr-1" />
+                                Edit
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No courses yet</p>
+                    <p className="text-sm">Create your first course to get started</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <Dialog open={courseDialogOpen} onOpenChange={setCourseDialogOpen}>

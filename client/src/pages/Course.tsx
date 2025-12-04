@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle, Video, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import type { Course as CourseType, Lesson, Quiz, Enrollment } from '@shared/schema';
+import type { Course as CourseType, Lesson, Quiz, Enrollment, Module } from '@shared/schema';
 
 interface CourseWithDetails extends CourseType {
   lessons?: Lesson[];
@@ -33,10 +33,16 @@ export default function Course() {
   const { courseId } = useParams();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [expandedModules, setExpandedModules] = useState<string[]>([]);
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
 
   const { data: course, isLoading, error } = useQuery<CourseWithDetails>({
     queryKey: [`/api/courses/${courseId}`],
+    enabled: !!courseId,
+  });
+
+  const { data: modules = [] } = useQuery<Module[]>({
+    queryKey: ['/api/courses', courseId, 'modules'],
     enabled: !!courseId,
   });
 
@@ -68,19 +74,37 @@ export default function Course() {
     },
   });
 
-  const progressMutation = useMutation({
+  const completeLessonMutation = useMutation({
     mutationFn: async (lessonId: string) => {
-      return apiRequest('POST', `/api/enrollments/${enrollment?.id}/progress`, { lessonId });
+      return apiRequest('POST', `/api/lessons/${lessonId}/complete`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'progress'] });
+      toast({
+        title: 'Lesson completed!',
+        description: 'Great progress! Keep going!',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to mark lesson complete.',
+        variant: 'destructive',
+      });
     },
   });
 
   const handleLessonComplete = (lessonId: string) => {
-    if (enrollment) {
-      progressMutation.mutate(lessonId);
-    }
+    completeLessonMutation.mutate(lessonId);
+  };
+
+  const toggleModule = (moduleId: string) => {
+    setExpandedModules(prev => 
+      prev.includes(moduleId) 
+        ? prev.filter(id => id !== moduleId)
+        : [...prev, moduleId]
+    );
   };
 
   if (isLoading) {
@@ -113,6 +137,97 @@ export default function Course() {
   const completedLessons = enrollment?.completedLessons || [];
   const progress = enrollment?.progress || 0;
   const allLessonsCompleted = lessons.length > 0 && completedLessons.length >= lessons.length;
+
+  const getLessonsForModule = (moduleId: string) => {
+    return lessons.filter(l => l.moduleId === moduleId).sort((a, b) => a.orderIndex - b.orderIndex);
+  };
+
+  const getUnassignedLessons = () => {
+    return lessons.filter(l => !l.moduleId).sort((a, b) => a.orderIndex - b.orderIndex);
+  };
+
+  const hasModules = modules.length > 0;
+  const unassignedLessons = getUnassignedLessons();
+
+  const renderLesson = (lesson: Lesson, index: number, isFirstModule: boolean = true) => {
+    const isCompleted = completedLessons.includes(lesson.id);
+    const isLocked = !isEnrolled && (!isFirstModule || index > 0);
+
+    return (
+      <div key={lesson.id} className="border-b border-border/50 last:border-0">
+        <div 
+          className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors ${
+            expandedLesson === lesson.id ? 'bg-muted/30' : ''
+          }`}
+          onClick={() => !isLocked && setExpandedLesson(expandedLesson === lesson.id ? null : lesson.id)}
+          data-testid={`lesson-item-${lesson.id}`}
+        >
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+            isCompleted 
+              ? 'bg-kaspa-green/20 text-kaspa-green' 
+              : isLocked 
+                ? 'bg-muted text-muted-foreground' 
+                : 'bg-kaspa-cyan/20 text-kaspa-cyan'
+          }`}>
+            {isCompleted ? (
+              <CheckCircle className="w-4 h-4" />
+            ) : isLocked ? (
+              <Lock className="w-4 h-4" />
+            ) : lesson.videoUrl ? (
+              <Video className="w-4 h-4" />
+            ) : (
+              <FileText className="w-4 h-4" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`font-medium text-sm ${isLocked ? 'text-muted-foreground' : 'text-white'}`}>
+              {lesson.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {formatDuration(lesson.duration)}
+            </p>
+          </div>
+          {!isLocked && (
+            <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${
+              expandedLesson === lesson.id ? 'rotate-90' : ''
+            }`} />
+          )}
+        </div>
+
+        {expandedLesson === lesson.id && !isLocked && (
+          <div className="px-4 pb-4 pl-[60px]">
+            {lesson.videoUrl && (
+              <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
+                <iframe
+                  src={lesson.videoUrl.replace('watch?v=', 'embed/')}
+                  className="w-full h-full"
+                  allowFullScreen
+                  title={lesson.title}
+                />
+              </div>
+            )}
+            <div className="prose prose-sm prose-invert text-muted-foreground mb-4">
+              {lesson.content}
+            </div>
+            {isEnrolled && !isCompleted && (
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleLessonComplete(lesson.id);
+                }}
+                disabled={completeLessonMutation.isPending}
+                className="bg-kaspa-cyan text-background"
+                data-testid={`button-complete-lesson-${lesson.id}`}
+              >
+                {completeLessonMutation.isPending ? 'Saving...' : 'Mark Complete'}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen pt-20 pb-8" data-testid="page-course">
@@ -156,7 +271,7 @@ export default function Course() {
                 </span>
                 <span className="flex items-center gap-2">
                   <BookOpen className="w-4 h-4" />
-                  {lessons.length} lessons
+                  {hasModules ? `${modules.length} modules` : `${lessons.length} lessons`}
                 </span>
                 {course.rating && (
                   <span className="flex items-center gap-2 text-bmt-orange">
@@ -175,6 +290,9 @@ export default function Course() {
                     <span className="text-sm font-semibold text-kaspa-cyan">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {completedLessons.length} of {lessons.length} lessons completed
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -183,70 +301,92 @@ export default function Course() {
               <CardHeader>
                 <CardTitle className="text-white">Course Content</CardTitle>
               </CardHeader>
-              <CardContent>
-                {lessons.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
+              <CardContent className="p-0">
+                {lessons.length === 0 && modules.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8 px-6">
                     Course content is being prepared. Check back soon!
                   </p>
-                ) : (
-                  <Accordion type="single" collapsible value={expandedLesson || undefined} onValueChange={v => setExpandedLesson(v)}>
-                    {lessons.map((lesson, index) => {
-                      const isCompleted = completedLessons.includes(lesson.id);
-                      const isLocked = !isEnrolled && index > 0;
+                ) : hasModules ? (
+                  <div className="divide-y divide-border">
+                    {modules.sort((a, b) => a.orderIndex - b.orderIndex).map((module, moduleIndex) => {
+                      const moduleLessons = getLessonsForModule(module.id);
+                      const moduleCompleted = moduleLessons.every(l => completedLessons.includes(l.id));
+                      const moduleProgress = moduleLessons.length > 0 
+                        ? Math.round((moduleLessons.filter(l => completedLessons.includes(l.id)).length / moduleLessons.length) * 100)
+                        : 0;
+                      const isExpanded = expandedModules.includes(module.id);
 
                       return (
-                        <AccordionItem key={lesson.id} value={lesson.id} className="border-border">
-                          <AccordionTrigger className="hover:no-underline py-4" data-testid={`accordion-lesson-${lesson.id}`}>
-                            <div className="flex items-center gap-3 text-left">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                isCompleted 
-                                  ? 'bg-kaspa-green/20 text-kaspa-green' 
-                                  : isLocked 
-                                    ? 'bg-muted text-muted-foreground' 
-                                    : 'bg-kaspa-cyan/20 text-kaspa-cyan'
-                              }`}>
-                                {isCompleted ? (
-                                  <CheckCircle className="w-4 h-4" />
-                                ) : isLocked ? (
-                                  <Lock className="w-4 h-4" />
-                                ) : (
-                                  <Play className="w-4 h-4" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-medium text-white">{lesson.title}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {formatDuration(lesson.duration)}
-                                </p>
-                              </div>
+                        <div key={module.id} data-testid={`module-${module.id}`}>
+                          <div 
+                            className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                            onClick={() => toggleModule(module.id)}
+                          >
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              moduleCompleted 
+                                ? 'bg-kaspa-green/20 text-kaspa-green'
+                                : 'bg-kaspa-cyan/20 text-kaspa-cyan'
+                            }`}>
+                              {moduleCompleted ? (
+                                <CheckCircle className="w-5 h-5" />
+                              ) : (
+                                <span className="font-bold text-sm">{moduleIndex + 1}</span>
+                              )}
                             </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="pl-11 pb-4">
-                            {isLocked ? (
-                              <p className="text-muted-foreground">Enroll to unlock this lesson.</p>
-                            ) : (
-                              <>
-                                <div className="prose prose-sm prose-invert text-muted-foreground mb-4">
-                                  {lesson.content}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-medium text-white">{module.title}</h3>
+                                <Badge variant="outline" className="text-xs">
+                                  {moduleLessons.length} lessons
+                                </Badge>
+                              </div>
+                              {module.description && (
+                                <p className="text-sm text-muted-foreground line-clamp-1">
+                                  {module.description}
+                                </p>
+                              )}
+                              {isEnrolled && moduleLessons.length > 0 && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Progress value={moduleProgress} className="h-1.5 flex-1 max-w-32" />
+                                  <span className="text-xs text-muted-foreground">{moduleProgress}%</span>
                                 </div>
-                                {isEnrolled && !isCompleted && (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleLessonComplete(lesson.id)}
-                                    disabled={progressMutation.isPending}
-                                    className="bg-kaspa-cyan text-background"
-                                    data-testid={`button-complete-lesson-${lesson.id}`}
-                                  >
-                                    {progressMutation.isPending ? 'Saving...' : 'Mark Complete'}
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </AccordionContent>
-                        </AccordionItem>
+                              )}
+                            </div>
+                            <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`} />
+                          </div>
+
+                          {isExpanded && (
+                            <div className="border-t border-border/50 bg-muted/10">
+                              {moduleLessons.length > 0 ? (
+                                moduleLessons.map((lesson, index) => renderLesson(lesson, index, moduleIndex === 0))
+                              ) : (
+                                <p className="text-sm text-muted-foreground text-center py-6">
+                                  No lessons in this module yet
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
-                  </Accordion>
+
+                    {unassignedLessons.length > 0 && (
+                      <div>
+                        <div className="px-4 py-3 bg-muted/30">
+                          <h3 className="font-medium text-white text-sm">Additional Lessons</h3>
+                        </div>
+                        {unassignedLessons.map((lesson, index) => renderLesson(lesson, index))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {lessons.sort((a, b) => a.orderIndex - b.orderIndex).map((lesson, index) => 
+                      renderLesson(lesson, index)
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -288,7 +428,14 @@ export default function Course() {
                         className="w-full bg-kaspa-cyan text-background"
                         onClick={() => {
                           const nextLesson = lessons.find(l => !completedLessons.includes(l.id));
-                          if (nextLesson) setExpandedLesson(nextLesson.id);
+                          if (nextLesson) {
+                            if (nextLesson.moduleId) {
+                              setExpandedModules(prev => 
+                                prev.includes(nextLesson.moduleId!) ? prev : [...prev, nextLesson.moduleId!]
+                              );
+                            }
+                            setExpandedLesson(nextLesson.id);
+                          }
                         }}
                         data-testid="button-continue-learning"
                       >

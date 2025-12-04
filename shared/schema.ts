@@ -53,21 +53,61 @@ export const insertCourseSchema = createInsertSchema(courses).omit({
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
 export type Course = typeof courses.$inferSelect;
 
+// ============ MODULES (Course Sections) ============
+export const modules = pgTable("modules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  courseId: varchar("course_id").references(() => courses.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  orderIndex: integer("order_index").notNull().default(0),
+  isPublished: boolean("is_published").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertModuleSchema = createInsertSchema(modules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertModule = z.infer<typeof insertModuleSchema>;
+export type Module = typeof modules.$inferSelect;
+
+// ============ CONTENT BLOCKS ============
+export const contentBlockSchema = z.object({
+  id: z.string(),
+  type: z.enum(['text', 'video', 'image', 'code', 'embed']),
+  content: z.string(),
+  caption: z.string().optional(),
+  language: z.string().optional(), // For code blocks
+  orderIndex: z.number(),
+});
+
+export type ContentBlock = z.infer<typeof contentBlockSchema>;
+
 // ============ LESSONS ============
 export const lessons = pgTable("lessons", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   courseId: varchar("course_id").references(() => courses.id).notNull(),
+  moduleId: varchar("module_id").references(() => modules.id),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  contentBlocks: jsonb("content_blocks").$type<ContentBlock[]>().default([]),
   videoUrl: text("video_url"),
   orderIndex: integer("order_index").notNull().default(0),
   duration: integer("duration"),
+  isPublished: boolean("is_published").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertLessonSchema = createInsertSchema(lessons).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
+}).extend({
+  contentBlocks: z.array(contentBlockSchema).optional(),
 });
 
 export type InsertLesson = z.infer<typeof insertLessonSchema>;
@@ -77,23 +117,34 @@ export type Lesson = typeof lessons.$inferSelect;
 export const quizzes = pgTable("quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   courseId: varchar("course_id").references(() => courses.id).notNull(),
+  moduleId: varchar("module_id").references(() => modules.id),
   title: text("title").notNull(),
   description: text("description"),
   passingScore: integer("passing_score").notNull().default(70),
-  timeLimit: integer("time_limit"),
+  timeLimit: integer("time_limit"), // In minutes
   maxAttempts: integer("max_attempts").default(3),
+  shuffleQuestions: boolean("shuffle_questions").notNull().default(false),
+  showCorrectAnswers: boolean("show_correct_answers").notNull().default(true),
+  isPublished: boolean("is_published").notNull().default(false),
+  orderIndex: integer("order_index").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertQuizSchema = createInsertSchema(quizzes).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertQuiz = z.infer<typeof insertQuizSchema>;
 export type Quiz = typeof quizzes.$inferSelect;
 
 // ============ QUIZ QUESTIONS ============
+// Question types: single_choice, multi_select, true_false, short_answer
+export const questionTypeEnum = z.enum(['single_choice', 'multi_select', 'true_false', 'short_answer']);
+export type QuestionType = z.infer<typeof questionTypeEnum>;
+
 export const quizOptionSchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -105,15 +156,20 @@ export type QuizOption = z.infer<typeof quizOptionSchema>;
 export const quizQuestions = pgTable("quiz_questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   quizId: varchar("quiz_id").references(() => quizzes.id).notNull(),
+  questionType: varchar("question_type", { length: 20 }).notNull().default('single_choice'),
   question: text("question").notNull(),
   options: jsonb("options").$type<QuizOption[]>().notNull(),
+  correctAnswer: text("correct_answer"), // For short_answer questions
+  points: integer("points").notNull().default(1),
   explanation: text("explanation"),
+  hint: text("hint"),
   orderIndex: integer("order_index").notNull().default(0),
 });
 
 export const insertQuizQuestionSchema = createInsertSchema(quizQuestions).omit({
   id: true,
 }).extend({
+  questionType: questionTypeEnum.optional(),
   options: z.array(quizOptionSchema),
 });
 
@@ -127,22 +183,54 @@ export const enrollments = pgTable("enrollments", {
   courseId: varchar("course_id").references(() => courses.id).notNull(),
   progress: integer("progress").notNull().default(0),
   completedLessons: jsonb("completed_lessons").$type<string[]>().notNull().default([]),
+  completedModules: jsonb("completed_modules").$type<string[]>().notNull().default([]),
+  currentLessonId: varchar("current_lesson_id"),
+  currentModuleId: varchar("current_module_id"),
   status: varchar("status", { length: 20 }).notNull().default('enrolled'),
   enrolledAt: timestamp("enrolled_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
 });
 
 export const insertEnrollmentSchema = createInsertSchema(enrollments).omit({
   id: true,
   progress: true,
   completedLessons: true,
+  completedModules: true,
+  currentLessonId: true,
+  currentModuleId: true,
   status: true,
   enrolledAt: true,
   completedAt: true,
+  lastAccessedAt: true,
 });
 
 export type InsertEnrollment = z.infer<typeof insertEnrollmentSchema>;
 export type Enrollment = typeof enrollments.$inferSelect;
+
+// ============ LESSON PROGRESS ============
+export const lessonProgress = pgTable("lesson_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  lessonId: varchar("lesson_id").references(() => lessons.id).notNull(),
+  courseId: varchar("course_id").references(() => courses.id).notNull(),
+  moduleId: varchar("module_id").references(() => modules.id),
+  status: varchar("status", { length: 20 }).notNull().default('not_started'), // not_started, in_progress, completed
+  timeSpent: integer("time_spent").notNull().default(0), // In seconds
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omit({
+  id: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLessonProgress = z.infer<typeof insertLessonProgressSchema>;
+export type LessonProgress = typeof lessonProgress.$inferSelect;
 
 // ============ QUIZ ATTEMPTS ============
 export const quizAttempts = pgTable("quiz_attempts", {
