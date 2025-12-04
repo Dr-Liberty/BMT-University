@@ -44,37 +44,72 @@ declare global {
 
 // Get the actual MetaMask provider, handling multi-wallet scenarios
 function getMetaMaskProvider(): EthereumProvider | null {
-  if (!window.ethereum) return null;
+  if (!window.ethereum) {
+    console.log('[Wallet] No window.ethereum found');
+    return null;
+  }
+  
+  // Debug: log what we're working with
+  console.log('[Wallet] Detecting MetaMask...', {
+    hasProviders: !!window.ethereum.providers?.length,
+    isMetaMask: window.ethereum.isMetaMask,
+    isKasware: window.ethereum.isKasware,
+    hasKaswareWindow: !!window.kasware
+  });
   
   // If there's a providers array (multi-wallet), find MetaMask specifically
   if (window.ethereum.providers?.length) {
     const metamask = window.ethereum.providers.find(p => p.isMetaMask && !p.isKasware);
-    if (metamask) return metamask;
+    if (metamask) {
+      console.log('[Wallet] Found MetaMask in providers array');
+      return metamask;
+    }
   }
   
-  // Check if the main ethereum object is MetaMask (and not Kasware pretending)
-  if (window.ethereum.isMetaMask && !window.ethereum.isKasware) {
+  // If Kasware has its own window object, avoid window.ethereum (Kasware may have hijacked it)
+  // and only return window.ethereum if it explicitly says it's MetaMask
+  if (window.kasware) {
+    // Kasware is installed - be careful with window.ethereum
+    if (window.ethereum.isMetaMask && !window.ethereum.isKasware) {
+      console.log('[Wallet] Using window.ethereum (marked as MetaMask, Kasware also present)');
+      return window.ethereum;
+    }
+    console.log('[Wallet] Kasware present but MetaMask not clearly identified');
+    return null;
+  }
+  
+  // No Kasware installed - safe to use window.ethereum if it exists
+  if (window.ethereum.isMetaMask) {
+    console.log('[Wallet] Using window.ethereum (isMetaMask flag set)');
     return window.ethereum;
   }
   
-  return null;
+  // Last resort: use window.ethereum even without isMetaMask flag
+  // Some wallet configurations don't set this properly
+  console.log('[Wallet] Fallback: using window.ethereum without isMetaMask flag');
+  return window.ethereum;
 }
 
 // Get the Kasware provider - prefer window.kasware.ethereum
 function getKaswareProvider(): EthereumProvider | null {
   // Prefer the dedicated Kasware ethereum provider
   if (window.kasware?.ethereum) {
+    console.log('[Wallet] Using window.kasware.ethereum');
     return window.kasware.ethereum;
   }
   
   // Fallback: check providers array
   if (window.ethereum?.providers?.length) {
     const kasware = window.ethereum.providers.find(p => p.isKasware);
-    if (kasware) return kasware;
+    if (kasware) {
+      console.log('[Wallet] Found Kasware in providers array');
+      return kasware;
+    }
   }
   
   // Last resort: main ethereum if it's Kasware
   if (window.ethereum?.isKasware) {
+    console.log('[Wallet] Using window.ethereum (isKasware flag set)');
     return window.ethereum;
   }
   
