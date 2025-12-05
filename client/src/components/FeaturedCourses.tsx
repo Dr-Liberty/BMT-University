@@ -7,6 +7,7 @@ import CourseCard, { CourseDisplay } from './CourseCard';
 import { Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { isAuthenticated } from '@/lib/auth';
 import type { Course, Enrollment } from '@shared/schema';
 
 function mapCourseToDisplay(course: Course): CourseDisplay {
@@ -72,6 +73,11 @@ export default function FeaturedCourses() {
   });
 
   const handleEnroll = (courseId: string) => {
+    if (!isAuthenticated()) {
+      // Navigate to course page where user can see details and connect wallet
+      setLocation(`/course/${courseId}`);
+      return;
+    }
     enrollMutation.mutate(courseId);
   };
 

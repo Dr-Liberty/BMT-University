@@ -11,6 +11,7 @@ import Footer from '@/components/Footer';
 import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { isAuthenticated } from '@/lib/auth';
 import type { Course, Enrollment } from '@shared/schema';
 
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
@@ -88,6 +89,11 @@ export default function Courses() {
   });
 
   const handleEnroll = (courseId: string) => {
+    if (!isAuthenticated()) {
+      // Navigate to course page where user can see details and connect wallet
+      setLocation(`/course/${courseId}`);
+      return;
+    }
     enrollMutation.mutate(courseId);
   };
 
