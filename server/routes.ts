@@ -2,11 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import { storage } from "./storage";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
@@ -51,7 +47,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   
   // Serve attached_assets as static files
-  const assetsPath = path.resolve(__dirname, "..", "attached_assets");
+  const assetsPath = path.resolve(import.meta.dirname, "..", "attached_assets");
   app.use("/assets", express.static(assetsPath));
   
   // ============ ABOUT PAGE ============
