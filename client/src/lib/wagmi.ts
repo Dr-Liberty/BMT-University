@@ -26,7 +26,7 @@ export const BMT_TOKEN_ADDRESS = '0x35fBa50F52e2AA305438134c646957066608d976' as
 
 export const config = getDefaultConfig({
   appName: 'BMT University',
-  projectId: 'bmt-university-app',
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'bmt-university-app',
   chains: [kasplexL2],
   transports: {
     [kasplexL2.id]: http('https://rpc.kasplex.org'),
