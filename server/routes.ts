@@ -47,7 +47,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   
   // Serve attached_assets as static files
-  const assetsPath = path.resolve(import.meta.dirname, "..", "attached_assets");
+  // In production, use process.cwd() which is reliable in CJS bundles
+  // In development, import.meta.dirname works but is undefined in production CJS
+  const assetsPath = path.join(process.cwd(), "attached_assets");
   app.use("/assets", express.static(assetsPath));
   
   // ============ ABOUT PAGE ============
