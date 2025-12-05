@@ -19,7 +19,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-muted-foreground mb-4 max-w-sm">
-              The premier blockchain learning platform on Kaspa. Learn, earn $BMT tokens, 
+              The premier BlockDAG learning platform on Kaspa. Learn, earn $BMT tokens, 
               and collect Bitcoin Maxi Tears.
             </p>
             <div className="flex items-center gap-4">
