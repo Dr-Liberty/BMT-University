@@ -10,12 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout, Share2, Gift, UserPlus } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout, Share2, Gift, UserPlus, ShieldX, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import CourseBuilder from "@/components/CourseBuilder";
+import { getAuthToken } from "@/lib/auth";
+import { useLocation } from "wouter";
 
 interface PaymasterConfig {
   configured: boolean;
@@ -135,6 +137,7 @@ const defaultCourseForm: CourseFormData = {
 
 export default function Admin() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [editingReward, setEditingReward] = useState<string | null>(null);
   const [newRewardAmount, setNewRewardAmount] = useState<number>(0);
   
@@ -143,26 +146,40 @@ export default function Admin() {
   const [courseForm, setCourseForm] = useState<CourseFormData>(defaultCourseForm);
   const [buildingCourseId, setBuildingCourseId] = useState<string | null>(null);
 
+  const authToken = getAuthToken();
+  
+  const { data: currentUser, isLoading: userLoading, error: userError } = useQuery<{ id: string; walletAddress: string; role: string }>({
+    queryKey: ['/api/auth/me'],
+    enabled: !!authToken,
+    retry: false,
+  });
+
+  const isAdmin = currentUser?.role === 'admin';
+
   const { data: paymasterConfig, isLoading: configLoading } = useQuery<PaymasterConfig>({
     queryKey: ['/api/admin/paymaster'],
+    enabled: isAdmin,
   });
 
   const { data: payoutSummary, isLoading: summaryLoading } = useQuery<PayoutSummary>({
     queryKey: ['/api/admin/payouts/summary'],
+    enabled: isAdmin,
   });
 
   const { data: payouts, isLoading: payoutsLoading } = useQuery<Payout[]>({
     queryKey: ['/api/admin/payouts'],
+    enabled: isAdmin,
   });
 
   const { data: courses, isLoading: coursesLoading } = useQuery<CourseWithStats[]>({
     queryKey: ['/api/admin/courses'],
+    enabled: isAdmin,
   });
 
   const { data: tokenData, isLoading: tokenDataLoading, error: tokenDataError, refetch: refetchTokenData } = useQuery<TokenData>({
     queryKey: ['/api/admin/token-data'],
-    enabled: !!paymasterConfig?.tokenContractAddress,
-    refetchInterval: 60000, // Refresh every minute
+    enabled: isAdmin && !!paymasterConfig?.tokenContractAddress,
+    refetchInterval: 60000,
     retry: 1,
   });
 
@@ -367,6 +384,51 @@ export default function Admin() {
         return <Badge variant="outline">{status}</Badge>;
     }
   };
+
+  if (!authToken) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-admin-auth-required">
+        <div className="text-center max-w-md">
+          <ShieldX className="w-16 h-16 text-destructive mx-auto mb-4" />
+          <h2 className="font-heading font-bold text-2xl text-white mb-2">Authentication Required</h2>
+          <p className="text-muted-foreground mb-6">
+            Please connect your wallet to access the admin dashboard.
+          </p>
+          <Button onClick={() => setLocation('/')} variant="outline" className="border-kaspa-cyan text-kaspa-cyan">
+            Go to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (userLoading) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-admin-loading">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-admin-access-denied">
+        <div className="text-center max-w-md">
+          <ShieldX className="w-16 h-16 text-destructive mx-auto mb-4" />
+          <h2 className="font-heading font-bold text-2xl text-white mb-2">Access Denied</h2>
+          <p className="text-muted-foreground mb-6">
+            You don't have permission to access the admin dashboard. This area is restricted to administrators only.
+          </p>
+          <Button onClick={() => setLocation('/dashboard')} variant="outline" className="border-kaspa-cyan text-kaspa-cyan">
+            Go to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (configLoading) {
     return (
