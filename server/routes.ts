@@ -1461,9 +1461,10 @@ export async function registerRoutes(
       const allRewards = await storage.getAllRewards();
       const allCertificates = await storage.getAllCertificates();
       const allQuizAttempts = await storage.getAllQuizAttempts();
+      const allEnrollments = await storage.getAllEnrollments();
       
       const totalEnrollments = courses.reduce((sum, c) => sum + c.enrollmentCount, 0);
-      const uniqueStudents = new Set(allCertificates.map(c => c.userId)).size;
+      const uniqueStudents = new Set(allEnrollments.map(e => e.userId)).size;
       
       const totalBmtDistributed = allRewards
         .filter(r => r.status === 'confirmed')
@@ -1482,7 +1483,7 @@ export async function registerRoutes(
       
       res.json({
         totalCourses: courses.length,
-        totalStudents: totalEnrollments,
+        totalStudents: uniqueStudents,
         totalBmtDistributed,
         pendingBmt,
         certificatesIssued: allCertificates.length,

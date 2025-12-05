@@ -79,6 +79,7 @@ export interface IStorage {
   getEnrollment(userId: string, courseId: string): Promise<Enrollment | undefined>;
   getEnrollmentById(enrollmentId: string): Promise<Enrollment | undefined>;
   getEnrollmentsByUser(userId: string): Promise<Enrollment[]>;
+  getAllEnrollments(): Promise<Enrollment[]>;
   createEnrollment(enrollment: InsertEnrollment): Promise<Enrollment>;
   updateEnrollment(id: string, data: Partial<Enrollment>): Promise<Enrollment | undefined>;
   
@@ -610,6 +611,10 @@ export class DatabaseStorage implements IStorage {
 
   async getEnrollmentsByUser(userId: string): Promise<Enrollment[]> {
     return db.select().from(enrollments).where(eq(enrollments.userId, userId));
+  }
+
+  async getAllEnrollments(): Promise<Enrollment[]> {
+    return db.select().from(enrollments);
   }
 
   async createEnrollment(enrollment: InsertEnrollment): Promise<Enrollment> {
