@@ -405,9 +405,9 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (conditions.length > 0) {
-      return db.select().from(courses).where(and(...conditions));
+      return db.select().from(courses).where(and(...conditions)).orderBy(asc(courses.createdAt));
     }
-    return db.select().from(courses);
+    return db.select().from(courses).orderBy(asc(courses.createdAt));
   }
 
   async createCourse(course: InsertCourse): Promise<Course> {
