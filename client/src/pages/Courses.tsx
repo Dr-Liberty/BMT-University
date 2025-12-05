@@ -11,7 +11,7 @@ import Footer from '@/components/Footer';
 import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import type { Course } from '@shared/schema';
+import type { Course, Enrollment } from '@shared/schema';
 
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
 const difficulties = ['All', 'beginner', 'intermediate', 'advanced'];
@@ -43,6 +43,12 @@ export default function Courses() {
   const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
     queryKey: ['/api/courses'],
   });
+
+  const { data: enrollments = [] } = useQuery<Enrollment[]>({
+    queryKey: ['/api/enrollments'],
+  });
+
+  const enrolledCourseIds = new Set(enrollments.map(e => e.courseId));
 
   const enrollMutation = useMutation({
     mutationFn: async (courseId: string) => {
@@ -83,6 +89,10 @@ export default function Courses() {
 
   const handleEnroll = (courseId: string) => {
     enrollMutation.mutate(courseId);
+  };
+
+  const handleContinue = (courseId: string) => {
+    setLocation(`/course/${courseId}`);
   };
 
   return (
@@ -199,7 +209,9 @@ export default function Courses() {
                 <CourseCard
                   key={course.id}
                   course={mapCourseToDisplay(course)}
+                  enrolled={enrolledCourseIds.has(course.id)}
                   onEnroll={handleEnroll}
+                  onContinue={handleContinue}
                 />
               ))}
             </div>
