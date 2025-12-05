@@ -76,7 +76,7 @@ export default function FeaturedCourses() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="font-heading font-bold text-3xl text-white mb-2">Explore Courses</h2>
-            <p className="text-muted-foreground">Master blockchain with expert-led courses</p>
+            <p className="text-muted-foreground">Master BlockDAG with expert-led courses</p>
           </div>
 
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
