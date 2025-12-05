@@ -275,9 +275,55 @@ export default function Course() {
                 )}
               </div>
             )}
-            <div className="prose prose-sm prose-invert text-muted-foreground mb-4 whitespace-pre-wrap">
-              {lesson.content}
-            </div>
+            {lesson.contentBlocks && lesson.contentBlocks.length > 0 ? (
+              <div className="space-y-4 mb-4">
+                {lesson.contentBlocks
+                  .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
+                  .map((block: any) => (
+                    <div key={block.id}>
+                      {block.type === 'text' && (
+                        <div className="prose prose-sm prose-invert text-muted-foreground whitespace-pre-wrap">
+                          {block.content}
+                        </div>
+                      )}
+                      {block.type === 'image' && (
+                        <div className="rounded-lg overflow-hidden">
+                          <img
+                            src={block.content}
+                            alt={block.caption || lesson.title}
+                            className="w-full max-h-96 object-contain rounded-lg bg-muted/30"
+                            data-testid={`img-content-block-${block.id}`}
+                          />
+                          {block.caption && (
+                            <p className="text-xs text-muted-foreground mt-2 italic text-center">
+                              {block.caption}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {block.type === 'video' && (
+                        <div className="aspect-video rounded-lg overflow-hidden">
+                          <iframe
+                            src={block.content}
+                            className="w-full h-full"
+                            allowFullScreen
+                            title={block.caption || lesson.title}
+                          />
+                        </div>
+                      )}
+                      {block.type === 'code' && (
+                        <pre className="bg-muted/50 p-4 rounded-lg overflow-x-auto text-sm">
+                          <code>{block.content}</code>
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="prose prose-sm prose-invert text-muted-foreground mb-4 whitespace-pre-wrap">
+                {lesson.content}
+              </div>
+            )}
             {isEnrolled && !isCompleted && (
               <Button
                 size="sm"
