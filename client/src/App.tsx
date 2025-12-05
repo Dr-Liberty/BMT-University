@@ -1,8 +1,6 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
-import '@rainbow-me/rainbowkit/styles.css';
-import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import { config } from './lib/wagmi';
 import { Toaster } from "@/components/ui/toaster";
@@ -43,22 +41,13 @@ function App() {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: '#F7931A',
-            accentColorForeground: 'white',
-            borderRadius: 'medium',
-          })}
-          modalSize="compact"
-        >
-          <TooltipProvider>
-            <div className="min-h-screen text-foreground">
-              <Navbar />
-              <Router />
-            </div>
-            <Toaster />
-          </TooltipProvider>
-        </RainbowKitProvider>
+        <TooltipProvider>
+          <div className="min-h-screen text-foreground">
+            <Navbar />
+            <Router />
+          </div>
+          <Toaster />
+        </TooltipProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

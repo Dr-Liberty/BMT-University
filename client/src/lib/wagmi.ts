@@ -1,7 +1,8 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { http } from 'wagmi';
+import { http, createConfig } from 'wagmi';
+import { injected } from 'wagmi/connectors';
+import { defineChain } from 'viem';
 
-export const kasplexL2 = {
+export const kasplexL2 = defineChain({
   id: 202555,
   name: 'Kasplex L2',
   nativeCurrency: {
@@ -13,23 +14,22 @@ export const kasplexL2 = {
     default: {
       http: ['https://rpc.kasplex.org'],
     },
-    public: {
-      http: ['https://rpc.kasplex.org'],
-    },
   },
   blockExplorers: {
     default: { name: 'Kasplex Explorer', url: 'https://explorer.kasplex.org' },
   },
-} as const;
+});
 
 export const BMT_TOKEN_ADDRESS = '0x35fBa50F52e2AA305438134c646957066608d976' as const;
 
-export const config = getDefaultConfig({
-  appName: 'BMT University',
-  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'bmt-university-app',
+export const config = createConfig({
   chains: [kasplexL2],
+  connectors: [
+    injected({
+      shimDisconnect: true,
+    }),
+  ],
   transports: {
     [kasplexL2.id]: http('https://rpc.kasplex.org'),
   },
-  ssr: false,
 });

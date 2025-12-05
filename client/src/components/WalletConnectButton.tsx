@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useConnect } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
+import { Play, Wallet, LogOut, AlertCircle } from 'lucide-react';
 import type { User } from '@shared/schema';
+import { kasplexL2 } from '@/lib/wagmi';
 
 const DEMO_WALLET_ADDRESS = '0xDEMO000000000000000000000000000000000001';
 
@@ -21,8 +21,9 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
   
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
+  const { connect, connectors, isPending } = useConnect();
 
   useEffect(() => {
     const token = getAuthToken();
@@ -293,90 +294,70 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     );
   }
 
+  const handleConnect = () => {
+    const injectedConnector = connectors.find(c => c.id === 'injected');
+    if (injectedConnector) {
+      connect({ connector: injectedConnector });
+    } else if (connectors.length > 0) {
+      connect({ connector: connectors[0] });
+    } else {
+      toast({
+        title: 'No Wallet Found',
+        description: 'Please install MetaMask or another EVM wallet extension.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDisconnect = () => {
+    disconnect();
+    handleWalletDisconnect();
+  };
+
+  const formatAddress = (addr: string) => {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const isWrongNetwork = chain && chain.id !== kasplexL2.id;
+
   return (
     <div data-testid="wallet-connect-container" className="flex items-center gap-2">
-      <ConnectButton.Custom>
-        {({
-          account,
-          chain,
-          openAccountModal,
-          openChainModal,
-          openConnectModal,
-          mounted,
-        }) => {
-          const ready = mounted;
-          const connected = ready && account && chain;
-
-          return (
-            <div
-              {...(!ready && {
-                'aria-hidden': true,
-                style: {
-                  opacity: 0,
-                  pointerEvents: 'none',
-                  userSelect: 'none',
-                },
-              })}
-            >
-              {(() => {
-                if (!connected) {
-                  return (
-                    <Button
-                      onClick={openConnectModal}
-                      className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
-                      data-testid="button-connect-wallet"
-                    >
-                      Connect Wallet
-                    </Button>
-                  );
-                }
-
-                if (chain.unsupported) {
-                  return (
-                    <Button
-                      onClick={openChainModal}
-                      variant="destructive"
-                      data-testid="button-wrong-network"
-                    >
-                      Wrong Network
-                    </Button>
-                  );
-                }
-
-                return (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={openChainModal}
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center gap-2"
-                      data-testid="button-chain"
-                    >
-                      {chain.hasIcon && chain.iconUrl && (
-                        <img
-                          alt={chain.name ?? 'Chain icon'}
-                          src={chain.iconUrl}
-                          className="w-4 h-4"
-                        />
-                      )}
-                      {chain.name}
-                    </Button>
-
-                    <Button
-                      onClick={openAccountModal}
-                      variant="outline"
-                      data-testid="button-account"
-                    >
-                      {account.displayName}
-                      {account.displayBalance ? ` (${account.displayBalance})` : ''}
-                    </Button>
-                  </div>
-                );
-              })()}
-            </div>
-          );
-        }}
-      </ConnectButton.Custom>
+      {!isConnected ? (
+        <Button
+          onClick={handleConnect}
+          disabled={isPending}
+          className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
+          data-testid="button-connect-wallet"
+        >
+          <Wallet className="h-4 w-4 mr-2" />
+          {isPending ? 'Connecting...' : 'Connect Wallet'}
+        </Button>
+      ) : isWrongNetwork ? (
+        <Button
+          variant="destructive"
+          data-testid="button-wrong-network"
+          className="flex items-center gap-2"
+        >
+          <AlertCircle className="h-4 w-4" />
+          Wrong Network
+        </Button>
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg">
+            <div className="w-2 h-2 bg-green-500 rounded-full" />
+            <span className="text-sm font-medium">{chain?.name || 'Kasplex L2'}</span>
+          </div>
+          <Button
+            onClick={handleDisconnect}
+            variant="outline"
+            data-testid="button-account"
+            className="flex items-center gap-2"
+          >
+            {formatAddress(address || '')}
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
       
       {!isAuthenticated && !isConnected && (
         <Button
