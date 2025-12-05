@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import express from "express";
+import path from "path";
 import { storage } from "./storage";
 import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
 import { fromError } from "zod-validation-error";
@@ -43,6 +45,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  
+  // Serve attached_assets as static files
+  const assetsPath = path.resolve(import.meta.dirname, "..", "attached_assets");
+  app.use("/assets", express.static(assetsPath));
   
   // ============ ABOUT PAGE ============
   app.get("/api/about", async (req, res) => {
