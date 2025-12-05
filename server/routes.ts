@@ -1008,14 +1008,19 @@ export async function registerRoutes(
       
       for (const question of questions) {
         const userAnswer = result.data.answers[question.id];
-        const correctOption = question.options.find(o => o.isCorrect);
-        const isCorrect = userAnswer === correctOption?.id;
+        
+        // Check for correct answer in two ways:
+        // 1. Options may have isCorrect field (for true/false questions)
+        // 2. The correctAnswer field on the question itself (most common)
+        const correctOptionFromField = question.options.find((o: any) => o.isCorrect === true);
+        const correctAnswerId = correctOptionFromField?.id || question.correctAnswer;
+        const isCorrect = userAnswer === correctAnswerId;
         
         if (isCorrect) correctCount++;
         
         feedback[question.id] = {
           correct: isCorrect,
-          correctAnswer: correctOption?.id || '',
+          correctAnswer: correctAnswerId || '',
           explanation: question.explanation || undefined,
         };
       }
