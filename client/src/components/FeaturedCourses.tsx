@@ -48,12 +48,13 @@ export default function FeaturedCourses() {
       });
       setLocation(`/course/${courseId}`);
     },
-    onError: (error: any) => {
+    onError: (error: any, courseId: string) => {
       if (error?.message?.includes('Already enrolled')) {
         toast({
-          title: 'Already enrolled',
-          description: 'You are already enrolled in this course.',
+          title: 'Continuing your course',
+          description: 'Taking you to where you left off.',
         });
+        setLocation(`/course/${courseId}`);
       } else {
         toast({
           title: 'Connect your wallet',
