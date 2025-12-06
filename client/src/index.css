@@ -3,9 +3,23 @@
 @tailwind utilities;
 
 /* Global Mobile Scroll Fix */
-html, body {
+html {
   overflow-x: hidden;
   max-width: 100vw;
+  height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-width: 100vw;
+  min-height: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area padding for mobile devices */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 /* BMT UNIVERSITY - Dark Theme Only */
