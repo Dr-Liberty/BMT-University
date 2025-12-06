@@ -1,0 +1,112 @@
+Kaspa Consensus System: Complete Learning Guide
+This guide provides comprehensive coverage of Kaspa's GHOSTDAG Consensus System, organized by topic area. Each section groups related concepts together, allowing you to explore specific aspects of the system in depth.
+
+How to Use This Guide
+Browse the sections below to find topics that interest you. Articles are organized by conceptual category rather than difficulty level, so you can jump directly to any area you want to understand. Some concepts appear in multiple sections because they're relevant to different aspects of the system.
+
+Foundational Concepts
+Understanding the basic building blocks of Kaspa's architecture.
+
+DAG - Directed Acyclic Graph Conceptual Overview - What DAGs are and why Kaspa uses them instead of linear chains
+DAG Terminology - Essential terms: Anticone, Past, Future, Tips, and their precise meanings in Kaspa's context
+GHOSTDAG Overview - High-level explanation of how Kaspa orders blocks and achieves consensus
+K-Cluster - What constitutes a K-cluster violation and why it's the Security foundation
+BPS Configuration - Blocks per Second: throughput targets and parameter derivation
+Core Data Structures
+The fundamental data types that represent blockchain state.
+
+UTXO - What is that? - Unspent Transaction Outputs and how Kaspa tracks spendable coins
+MuHash - What is that? - Cryptographic commitment for UTXO Set Verification and Pruning
+Merkle Root and Accepted Merkle Root - Transaction Commitments, linking the Body to the Header
+Parents and Mergeset - The relationship between a block's direct Parents and its full Mergeset
+GHOSTDAG Mechanics
+Deep dive into the consensus algorithm implementation.
+
+K Parameter - The Security parameter controlling K-cluster violations
+Parent Selection and Ordering - How the Selected Parent is chosen, the first step
+Mergeset Creation - How blocks build their Mergeset from the DAG, the second step
+Blue and Red Classification - The coloring Algorithm, the third step
+Blue Work Calculation - Cumulative metrics for chain selection, the last step
+Consensus Parameters
+Configuration values that govern network behavior.
+
+BPS Configuration - Mathematical relationships between BPS and derived parameters
+K Parameter - Security parameter and its calculation from BPS
+Mergeset Size Limit - Maximum Mergeset size constraints
+Merge Depth Bound - Preventing deep reorgs through Depth Constraints
+Finality Depth - When blocks become irreversible
+DAA Window - Sliding window for difficulty adjustment
+Pruning Depth - How far back full block data is required
+Crescendo Fork Activation (Coming soon) - How parameters change dynamically at fork activation
+Block Processing
+How blocks flow through the validation pipeline.
+
+Parents and Mergeset - Block Parent Selection and Mergeset construction
+Mergeset Creation - Detailed Mergeset algorithm
+Blue and Red Classification - Classification during Block processing
+Parent Selection and Ordering - Selected Parent determination
+Blue Score and Blue Work - Score calculation during processing
+Block Processing Pipeline Overview (Coming soon) - Four-stage architecture: Header → Body → Virtual → Pruning
+Difficulty Adjustment (DAA)
+How Kaspa maintains consistent block times.
+
+DAA Window - Window construction for difficulty calculation
+DAA Score vs Blue Score (Coming soon) - Two scoring systems and their different purposes
+Non-DAA Blocks (Coming soon) - Blocks excluded from difficulty windows
+Anticone Finalization & Safe Pruning
+Mathematical foundations for safe data removal.
+
+DAG Terminology - Anticone definition and related concepts
+Finality Depth - Finality Guarantees and Depth Calculations
+Merge Depth Bound - Depth constraints for Pruning Safety
+K Parameter - K's role in Finalization
+Mergeset Size Limit - Size constraints for Finalization
+Pruning Depth - Safe Pruning Depth
+Anticone Finalization Depth - Mathematical foundation for safe pruning depth
+Pruning System
+Managing blockchain data growth.
+
+MuHash - What is that? - MuHash's role in Pruning
+Anticone Finalization & Safe Pruning - Complete finalization theory
+First Order Pruning - Removing old Block Bodies and Transactions
+Second Order Pruning - Removing old Headers while preserving Proof of Work
+Archival vs Pruning Nodes - Different node types and Storage Requirements
+Transaction Processing
+How transactions are validated and included in blocks.
+
+UTXO - What is that? - UTXO model in Transaction context
+Transaction Selection (Intro) - Basic Transaction Selection for mining
+Transaction Selection Strategies (Intermediate) - Advanced Transaction Selection
+DAA Window - DAA window's role in Transaction Validation
+Transaction Validation (Coming soon) - Two-phase validation: isolation and context checks
+Mass Calculation - Compute mass, storage mass (KIP-9), and transient mass
+Coinbase Transactions (Coming soon) - Block rewards, subsidy calculation, and maturity
+Virtual State
+Kaspa's unique approach to representing the current DAG tip.
+
+Virtual Block - The conceptual "current state" block
+Sink Selection (Coming soon) - Finding the highest UTXO-valid block
+Virtual Parents (Coming soon) - Parent selection from current tips
+Virtual DAA Score (Coming soon) - DAA score of the virtual block
+Timestamps & Median Time
+Timestamp consensus and validation.
+
+Past Median Time (Coming soon) - Median calculation from ancestor windows
+Timestamp Validation (Coming soon) - Rules for valid block timestamps
+Network & Scaling
+Why Kaspa's architecture enables high throughput.
+
+Bitcoin Scaling Problem - Traditional blockchain limitations
+BPS Configuration - High throughput configuration
+K Parameter - K's role in network Security at Scale
+Merge Depth Bound - Preventing reorgs in high-throughput networks
+Finality & Security
+Understanding Kaspa's Security Guarantees.
+
+K Parameter - K's Security Properties
+Merge Depth Bound - Depth-based Security
+Mergeset Size Limit - Size-based Security constraints
+DAA Window - DAA's role in Security
+Finality Depth - Finality guarantees
+Pruning Depth (Anticone Finalization Depth) - Pruning Safety guarantees
+Probabilistic and Deterministic Finality - Two types of Finality in Kaspa
