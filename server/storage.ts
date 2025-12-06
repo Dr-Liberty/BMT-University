@@ -84,6 +84,7 @@ export interface IStorage {
   updateEnrollment(id: string, data: Partial<Enrollment>): Promise<Enrollment | undefined>;
   
   getQuizAttempts(userId: string, quizId: string): Promise<QuizAttempt[]>;
+  getFailedAttemptsLast24Hours(userId: string, quizId: string): Promise<QuizAttempt[]>;
   getAllQuizAttempts(): Promise<QuizAttempt[]>;
   createQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt>;
   
@@ -650,6 +651,18 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(quizAttempts)
       .where(and(eq(quizAttempts.userId, userId), eq(quizAttempts.quizId, quizId)))
       .orderBy(desc(quizAttempts.startedAt));
+  }
+
+  async getFailedAttemptsLast24Hours(userId: string, quizId: string): Promise<QuizAttempt[]> {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return db.select().from(quizAttempts)
+      .where(and(
+        eq(quizAttempts.userId, userId),
+        eq(quizAttempts.quizId, quizId),
+        eq(quizAttempts.passed, false),
+        gt(quizAttempts.startedAt, twentyFourHoursAgo)
+      ))
+      .orderBy(asc(quizAttempts.startedAt));
   }
 
   async getAllQuizAttempts(): Promise<QuizAttempt[]> {

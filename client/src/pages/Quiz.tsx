@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Trophy, RefreshCw, Loader2, AlertCircle, CheckCircle, XCircle, Award } from 'lucide-react';
+import { ArrowLeft, Trophy, RefreshCw, Loader2, AlertCircle, CheckCircle, XCircle, Award, Clock } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { getAuthToken } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -39,6 +39,15 @@ interface SubmitQuizResponse {
   certificate: Certificate | null;
   rewardBlocked?: boolean;
   blockReason?: string;
+}
+
+interface CooldownStatus {
+  onCooldown: boolean;
+  cooldownEndsAt?: string;
+  remainingHours?: number;
+  remainingMinutes?: number;
+  failedAttempts: number;
+  attemptsUntilCooldown?: number;
 }
 
 function getDeviceFingerprint(): { hash: string; screenResolution: string; timezone: string; language: string; platform: string } {
@@ -85,6 +94,13 @@ export default function Quiz() {
     queryKey: ['/api/courses', courseId],
   });
 
+  const quizId = courseData?.quiz?.id;
+
+  const { data: cooldownStatus, refetch: refetchCooldown } = useQuery<CooldownStatus>({
+    queryKey: ['/api/quizzes', quizId, 'cooldown'],
+    enabled: !!quizId && isAuthenticated,
+  });
+
   const submitMutation = useMutation<SubmitQuizResponse, Error, { quizId: string; answers: Record<string, string> }>({
     mutationFn: async ({ quizId, answers }) => {
       const fingerprint = getDeviceFingerprint();
@@ -96,6 +112,7 @@ export default function Quiz() {
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/certificates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
+      refetchCooldown();
       
       if (data.passed) {
         if (data.rewardBlocked) {
@@ -222,6 +239,59 @@ export default function Quiz() {
     );
   }
 
+  if (cooldownStatus?.onCooldown) {
+    const endTime = cooldownStatus.cooldownEndsAt ? new Date(cooldownStatus.cooldownEndsAt) : null;
+    const formatTime = (date: Date) => {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+    const formatDate = (date: Date) => {
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      if (date.toDateString() === today.toDateString()) {
+        return 'today';
+      } else if (date.toDateString() === tomorrow.toDateString()) {
+        return 'tomorrow';
+      }
+      return date.toLocaleDateString();
+    };
+
+    return (
+      <div className="min-h-screen pt-20 pb-8 flex items-center justify-center" data-testid="page-quiz-cooldown">
+        <div className="text-center max-w-md">
+          <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center bg-bmt-orange/20">
+            <Clock className="w-10 h-10 text-bmt-orange" />
+          </div>
+          <h2 className="font-heading font-bold text-2xl text-white mb-2">Cooldown Active</h2>
+          <p className="text-muted-foreground mb-4">
+            You've made 3 failed attempts in the last 24 hours. Please wait before trying again.
+          </p>
+          {endTime && (
+            <div className="bg-card border border-border rounded-lg p-4 mb-6">
+              <p className="text-sm text-muted-foreground mb-1">You can try again</p>
+              <p className="font-heading font-bold text-lg text-bmt-orange">
+                {formatDate(endTime)} at {formatTime(endTime)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                (~{cooldownStatus.remainingHours} hour{cooldownStatus.remainingHours !== 1 ? 's' : ''} remaining)
+              </p>
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button onClick={() => setLocation(`/course/${courseId}`)} variant="outline">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Course
+            </Button>
+            <Button onClick={() => setLocation('/courses')} className="bg-kaspa-cyan text-background">
+              Browse Courses
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (quizResult) {
     return (
       <div className="min-h-screen pt-20 pb-8" data-testid="page-quiz-results">
@@ -343,6 +413,17 @@ export default function Quiz() {
           </div>
           <Progress value={((currentQuestion + 1) / questions.length) * 100} className="h-2" />
         </div>
+
+        {cooldownStatus && !cooldownStatus.onCooldown && cooldownStatus.failedAttempts > 0 && (
+          <div className="mb-4 p-3 bg-bmt-orange/10 border border-bmt-orange/30 rounded-lg flex items-center gap-3" data-testid="warning-attempts">
+            <AlertCircle className="w-5 h-5 text-bmt-orange flex-shrink-0" />
+            <p className="text-sm text-bmt-orange">
+              {cooldownStatus.attemptsUntilCooldown === 1 
+                ? 'Warning: You have 1 attempt left before a 24-hour cooldown.'
+                : `You have ${cooldownStatus.attemptsUntilCooldown} attempts left before a 24-hour cooldown.`}
+            </p>
+          </div>
+        )}
 
         <Card className="bg-card border-border" data-testid="card-question">
           <CardContent className="p-6">

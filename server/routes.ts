@@ -995,6 +995,42 @@ export async function registerRoutes(
     return ip;
   }
 
+  // Check quiz cooldown status (24-hour cooldown after 3 failed attempts)
+  app.get("/api/quizzes/:quizId/cooldown", authMiddleware, async (req: any, res) => {
+    try {
+      const failedAttemptsLast24h = await storage.getFailedAttemptsLast24Hours(req.user.id, req.params.quizId);
+      
+      if (failedAttemptsLast24h.length >= 3) {
+        // Array is sorted ascending, so first element is the oldest (earliest) attempt
+        const oldestFailedAttempt = failedAttemptsLast24h[0];
+        const cooldownEndsAt = new Date(oldestFailedAttempt.startedAt!.getTime() + 24 * 60 * 60 * 1000);
+        const now = new Date();
+        
+        if (now < cooldownEndsAt) {
+          const remainingMs = cooldownEndsAt.getTime() - now.getTime();
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          const remainingMinutes = Math.ceil(remainingMs / (1000 * 60));
+          return res.json({ 
+            onCooldown: true,
+            cooldownEndsAt: cooldownEndsAt.toISOString(),
+            remainingHours,
+            remainingMinutes,
+            failedAttempts: failedAttemptsLast24h.length
+          });
+        }
+      }
+      
+      res.json({ 
+        onCooldown: false,
+        failedAttempts: failedAttemptsLast24h.length,
+        attemptsUntilCooldown: Math.max(0, 3 - failedAttemptsLast24h.length)
+      });
+    } catch (error) {
+      console.error("Error checking cooldown:", error);
+      res.status(500).json({ error: "Failed to check cooldown status" });
+    }
+  });
+
   app.post("/api/quizzes/:quizId/submit", authMiddleware, async (req: any, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.quizId);
@@ -1014,6 +1050,24 @@ export async function registerRoutes(
       const previousAttempts = await storage.getQuizAttempts(req.user.id, quiz.id);
       if (quiz.maxAttempts && previousAttempts.length >= quiz.maxAttempts) {
         return res.status(400).json({ error: "Maximum attempts reached" });
+      }
+      
+      // ============ 24-HOUR COOLDOWN AFTER 3 FAILED ATTEMPTS ============
+      const failedAttemptsLast24h = await storage.getFailedAttemptsLast24Hours(req.user.id, quiz.id);
+      if (failedAttemptsLast24h.length >= 3) {
+        // Array is sorted ascending, so first element is the oldest (earliest) attempt
+        const oldestFailedAttempt = failedAttemptsLast24h[0];
+        const cooldownEndsAt = new Date(oldestFailedAttempt.startedAt!.getTime() + 24 * 60 * 60 * 1000);
+        const now = new Date();
+        if (now < cooldownEndsAt) {
+          const remainingMs = cooldownEndsAt.getTime() - now.getTime();
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          return res.status(429).json({ 
+            error: "Too many failed attempts. Please wait before trying again.",
+            cooldownEndsAt: cooldownEndsAt.toISOString(),
+            remainingHours
+          });
+        }
       }
       
       const result = submitQuizSchema.safeParse(req.body);
