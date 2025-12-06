@@ -1581,9 +1581,12 @@ export async function registerRoutes(
         ? Math.min(100, Math.round((allCertificates.length / totalEnrollments) * 100))
         : 0;
       
+      const coursesCompleted = allEnrollments.filter(e => e.status === 'completed').length;
+      
       res.json({
         totalCourses: courses.length,
         totalStudents: uniqueStudents,
+        coursesCompleted,
         totalBmtDistributed,
         pendingBmt,
         certificatesIssued: allCertificates.length,

@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BookOpen, Award, Coins } from 'lucide-react';
+import { BookOpen, Award, Coins, CheckCircle } from 'lucide-react';
 import { Link } from 'wouter';
 import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 
 interface StatsData {
   totalCourses: number;
   totalStudents: number;
+  coursesCompleted: number;
   totalBmtDistributed: number;
 }
 
@@ -87,6 +88,18 @@ export default function HeroSection() {
               )}
             </div>
             <span className="text-sm text-muted-foreground uppercase tracking-wide">Students</span>
+          </div>
+          
+          <div className="text-center" data-testid="stat-hero-courses-completed">
+            <div className="flex items-center justify-center mb-2">
+              <CheckCircle className="w-6 h-6 text-kaspa-cyan mr-2" />
+              {isLoading ? (
+                <Skeleton className="h-9 w-16" />
+              ) : (
+                <span className="font-heading font-bold text-3xl text-white">{stats?.coursesCompleted?.toLocaleString() ?? 0}</span>
+              )}
+            </div>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">Courses Completed</span>
           </div>
           
           <div className="text-center" data-testid="stat-hero-bmt-distributed">
