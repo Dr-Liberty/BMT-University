@@ -8,7 +8,7 @@ import { Play, Wallet, LogOut, AlertCircle } from 'lucide-react';
 import type { User } from '@shared/schema';
 import { kasplexL2 } from '@/lib/wagmi';
 
-const DEMO_WALLET_ADDRESS = '0xDEMO000000000000000000000000000000000001';
+const DEMO_WALLET_ADDRESS = '0xdead000000000000000000000000000000000001';
 
 interface WalletConnectButtonProps {
   onConnect?: () => void;
@@ -202,12 +202,12 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       }
 
       const { nonce } = await nonceRes.json();
-      const signature = `demo_signature_${nonce}`;
+      const signature = `0xdemo_${nonce}`;
 
       const verifyRes = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS, signature }),
+        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS, signature, isDemo: true }),
       });
 
       if (!verifyRes.ok) {
