@@ -66,8 +66,7 @@ export default function HeroSection() {
           <Link href="/dashboard">
             <Button
               size="lg"
-              variant="outline"
-              className="border-bmt-orange text-bmt-orange font-heading uppercase tracking-wide px-8 gap-2"
+              className="bg-gradient-to-r from-kaspa-cyan to-kaspa-green text-background font-heading uppercase tracking-wide px-8 gap-2"
               data-testid="button-hero-dashboard"
             >
               <Award className="w-5 h-5" />
