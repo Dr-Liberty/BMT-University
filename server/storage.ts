@@ -402,11 +402,11 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(courses.isPublished, filters.isPublished));
     }
     
-    let query = db.select().from(courses).orderBy(asc(courses.createdAt));
+    const baseQuery = conditions.length > 0 
+      ? db.select().from(courses).where(and(...conditions))
+      : db.select().from(courses);
     
-    if (conditions.length > 0) {
-      query = db.select().from(courses).where(and(...conditions)).orderBy(asc(courses.createdAt));
-    }
+    let query = baseQuery.orderBy(asc(courses.orderIndex), asc(courses.createdAt));
     
     // Apply pagination if specified
     if (filters?.limit !== undefined) {

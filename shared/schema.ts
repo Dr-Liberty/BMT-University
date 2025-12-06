@@ -38,6 +38,7 @@ export const courses = pgTable("courses", {
   isPublished: boolean("is_published").notNull().default(false),
   enrollmentCount: integer("enrollment_count").notNull().default(0),
   rating: decimal("rating", { precision: 2, scale: 1 }),
+  orderIndex: integer("order_index").notNull().default(999),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
