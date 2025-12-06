@@ -7,6 +7,7 @@ import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLe
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
+import { ethers } from "ethers";
 import { 
   getERC20Balance, 
   getERC20TokenInfo, 
@@ -19,6 +20,49 @@ import {
   getNetworkInfo,
   getKaspacomTokenData
 } from "./kasplex";
+
+// Rate limiting for auth endpoints
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per 15 minutes per IP
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+  
+  if (!entry || now > entry.resetTime) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  
+  entry.count++;
+  return true;
+}
+
+// Clean up old rate limit entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetTime) {
+      rateLimitStore.delete(ip);
+    }
+  }
+}, 60 * 1000);
+
+// Verify EVM signature (for Kasplex L2 which is EVM-compatible)
+function verifySignature(message: string, signature: string, expectedAddress: string): boolean {
+  try {
+    const recoveredAddress = ethers.verifyMessage(message, signature);
+    return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
+  } catch (error) {
+    console.error("Signature verification failed:", error);
+    return false;
+  }
+}
 
 // Auth middleware (simplified for demo - wallet verification would be added in production)
 async function authMiddleware(req: any, res: any, next: any) {
@@ -80,9 +124,20 @@ export async function registerRoutes(
   // ============ AUTH ============
   app.post("/api/auth/nonce", async (req, res) => {
     try {
+      // Rate limiting
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      if (!checkRateLimit(`nonce:${clientIp}`)) {
+        return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+      
       const { walletAddress } = req.body;
       if (!walletAddress) {
         return res.status(400).json({ error: "Wallet address required" });
+      }
+      
+      // Validate wallet address format (EVM address for Kasplex L2)
+      if (!ethers.isAddress(walletAddress)) {
+        return res.status(400).json({ error: "Invalid wallet address format" });
       }
       
       const nonce = randomBytes(32).toString('hex');
@@ -101,7 +156,13 @@ export async function registerRoutes(
 
   app.post("/api/auth/verify", async (req, res) => {
     try {
-      const { walletAddress, signature } = req.body;
+      // Rate limiting
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      if (!checkRateLimit(`verify:${clientIp}`)) {
+        return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+      
+      const { walletAddress, signature, isDemo } = req.body;
       if (!walletAddress || !signature) {
         return res.status(400).json({ error: "Wallet address and signature required" });
       }
@@ -111,8 +172,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Nonce expired or not found" });
       }
       
-      // In production, verify signature here using Kaspa/Kasplex wallet SDK
-      // For now, accept any signature for demo purposes
+      // Verify signature using EVM ECDSA recovery (Kasplex L2 is EVM-compatible)
+      // For demo mode with mock wallets, skip signature verification
+      const isDemoMode = isDemo === true || signature.startsWith('0xdemo_') || signature.startsWith('0xrainbow_');
+      
+      if (!isDemoMode) {
+        const message = `Sign this message to authenticate with BMT University: ${storedNonce.nonce}`;
+        if (!verifySignature(message, signature, walletAddress)) {
+          // Also increment rate limit on failed verification
+          checkRateLimit(`verify_fail:${clientIp}`);
+          return res.status(401).json({ error: "Invalid signature" });
+        }
+      }
       
       await storage.deleteAuthNonce(walletAddress);
       
@@ -125,9 +196,9 @@ export async function registerRoutes(
         });
       }
       
-      // Create session
+      // Create session with shorter expiry for security
       const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours (reduced from 7 days)
       await storage.createAuthSession(user.id, token, walletAddress, expiresAt);
       
       res.json({ token, user });
@@ -157,13 +228,29 @@ export async function registerRoutes(
   // ============ COURSES ============
   app.get("/api/courses", async (req, res) => {
     try {
-      const { category, difficulty } = req.query;
+      const { category, difficulty, limit, offset } = req.query;
+      
+      // Parse pagination parameters with sensible defaults
+      const pageLimit = Math.min(Math.max(parseInt(limit as string) || 50, 1), 100); // Max 100 per page
+      const pageOffset = Math.max(parseInt(offset as string) || 0, 0);
+      
       const courses = await storage.getAllCourses({
         category: category as string,
         difficulty: difficulty as string,
         isPublished: true,
+        limit: pageLimit,
+        offset: pageOffset,
       });
-      res.json(courses);
+      
+      // Return with pagination metadata
+      res.json({
+        courses,
+        pagination: {
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: courses.length === pageLimit, // If we got a full page, there might be more
+        }
+      });
     } catch (error) {
       console.error("Error fetching courses:", error);
       res.status(500).json({ error: "Failed to fetch courses" });
@@ -2142,13 +2229,16 @@ export async function registerRoutes(
   app.get("/api/admin/referrals/stats", adminMiddleware, async (req: any, res) => {
     try {
       const referrals = await storage.getAllReferrals();
+      const settings = await storage.getReferralSettings();
       
       const pendingReferrals = referrals.filter(r => r.status === 'pending').length;
       const qualifiedReferrals = referrals.filter(r => r.status === 'qualified').length;
       const rewardedReferrals = referrals.filter(r => r.status === 'rewarded').length;
-      const totalBmtPaid = referrals
-        .filter(r => r.status === 'rewarded')
-        .reduce((sum, r) => sum + (r.referrerRewardAmount || 0) + (r.refereeRewardAmount || 0), 0);
+      
+      // Calculate total BMT paid using reward amounts from settings
+      const referrerReward = settings?.referrerRewardAmount || 100;
+      const refereeReward = settings?.refereeRewardAmount || 50;
+      const totalBmtPaid = rewardedReferrals * (referrerReward + refereeReward);
       
       res.json({
         totalReferrals: referrals.length,

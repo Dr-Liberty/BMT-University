@@ -33,9 +33,11 @@ export default function FeaturedCourses() {
   const [filter, setFilter] = useState<FilterType>('featured');
   const { toast } = useToast();
 
-  const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
+  const { data: coursesResponse, isLoading, error, refetch } = useQuery<{ courses: Course[]; pagination: { limit: number; offset: number; hasMore: boolean } }>({
     queryKey: ['/api/courses'],
   });
+  
+  const courses = coursesResponse?.courses ?? [];
 
   const { data: enrollments = [] } = useQuery<Enrollment[]>({
     queryKey: ['/api/enrollments'],

@@ -14,6 +14,15 @@ import { useToast } from '@/hooks/use-toast';
 import { isAuthenticated } from '@/lib/auth';
 import type { Course, Enrollment } from '@shared/schema';
 
+interface PaginatedCoursesResponse {
+  courses: Course[];
+  pagination: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
 const difficulties = ['All', 'beginner', 'intermediate', 'advanced'];
 
@@ -41,9 +50,11 @@ export default function Courses() {
   const [filter, setFilter] = useState('all');
   const { toast } = useToast();
 
-  const { data: courses = [], isLoading, error, refetch } = useQuery<Course[]>({
+  const { data: coursesResponse, isLoading, error, refetch } = useQuery<PaginatedCoursesResponse>({
     queryKey: ['/api/courses'],
   });
+  
+  const courses = coursesResponse?.courses ?? [];
 
   const { data: enrollments = [] } = useQuery<Enrollment[]>({
     queryKey: ['/api/enrollments'],

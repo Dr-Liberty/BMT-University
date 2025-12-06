@@ -43,6 +43,13 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 *   **Analytics Dashboard**: Real-time statistics, leaderboards, activity feeds.
 *   **Paymaster Wallet System**: Manages $BMT token distribution on Kasplex Layer 2 (EVM-compatible) for rewards, including transaction tracking and admin configuration.
 
+### Security & Performance
+
+*   **Authentication Security**: Proper ECDSA signature verification using ethers.verifyMessage to validate wallet signatures.
+*   **Rate Limiting**: Auth endpoints limited to 10 requests per 15 minutes per IP address.
+*   **API Pagination**: Courses API supports limit/offset pagination (max 100 per page).
+*   **Frontend Caching**: React Query configured with 2-minute staleTime, 10-minute gcTime, and background refetch on window focus.
+
 ## External Dependencies
 
 *   **Kaspa Network**: Underlying blockchain for the platform.

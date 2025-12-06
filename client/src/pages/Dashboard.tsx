@@ -186,9 +186,11 @@ export default function Dashboard() {
     }
   };
 
-  const { data: allCourses = [] } = useQuery<Course[]>({
+  const { data: coursesResponse } = useQuery<{ courses: Course[]; pagination: { limit: number; offset: number; hasMore: boolean } }>({
     queryKey: ['/api/courses'],
   });
+  
+  const allCourses = coursesResponse?.courses ?? [];
 
   const { data: certificates = [], isLoading: certificatesLoading } = useQuery<CertificateWithCourse[]>({
     queryKey: ['/api/certificates'],

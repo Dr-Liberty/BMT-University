@@ -327,7 +327,7 @@ export default function Quiz() {
           </Button>
 
           <h1 className="font-heading font-bold text-2xl text-white mb-2" data-testid="text-quiz-title">
-            {quiz.title || courseName}
+            {quiz?.title || courseName}
           </h1>
           <p className="text-muted-foreground">
             Pass with {passingScore}% to earn <span className="text-bmt-orange">{bmtReward.toLocaleString()} $BMT</span>

@@ -36,7 +36,7 @@ export interface IStorage {
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
   
   getCourse(id: string): Promise<Course | undefined>;
-  getAllCourses(filters?: { category?: string; difficulty?: string; isPublished?: boolean }): Promise<Course[]>;
+  getAllCourses(filters?: { category?: string; difficulty?: string; isPublished?: boolean; limit?: number; offset?: number }): Promise<Course[]>;
   createCourse(course: InsertCourse): Promise<Course>;
   updateCourse(id: string, data: Partial<InsertCourse>): Promise<Course | undefined>;
   deleteCourse(id: string): Promise<boolean>;
@@ -390,9 +390,7 @@ export class DatabaseStorage implements IStorage {
     return course || undefined;
   }
 
-  async getAllCourses(filters?: { category?: string; difficulty?: string; isPublished?: boolean }): Promise<Course[]> {
-    let query = db.select().from(courses);
-    
+  async getAllCourses(filters?: { category?: string; difficulty?: string; isPublished?: boolean; limit?: number; offset?: number }): Promise<Course[]> {
     const conditions = [];
     if (filters?.category) {
       conditions.push(eq(courses.category, filters.category));
@@ -404,10 +402,21 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(courses.isPublished, filters.isPublished));
     }
     
+    let query = db.select().from(courses).orderBy(asc(courses.createdAt));
+    
     if (conditions.length > 0) {
-      return db.select().from(courses).where(and(...conditions)).orderBy(asc(courses.createdAt));
+      query = db.select().from(courses).where(and(...conditions)).orderBy(asc(courses.createdAt));
     }
-    return db.select().from(courses).orderBy(asc(courses.createdAt));
+    
+    // Apply pagination if specified
+    if (filters?.limit !== undefined) {
+      query = query.limit(filters.limit) as typeof query;
+    }
+    if (filters?.offset !== undefined) {
+      query = query.offset(filters.offset) as typeof query;
+    }
+    
+    return query;
   }
 
   async createCourse(course: InsertCourse): Promise<Course> {
