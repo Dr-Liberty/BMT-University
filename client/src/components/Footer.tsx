@@ -24,25 +24,22 @@ export default function Footer() {
             </p>
             <div className="flex items-center gap-4">
               <a 
-                href="#" 
+                href="https://x.com/BTC_Maxi_Tears" 
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-kaspa-cyan transition-colors"
                 data-testid="link-twitter"
               >
                 <SiX className="w-5 h-5" />
               </a>
               <a 
-                href="#" 
+                href="https://t.me/BTCMaxiTearsBMT" 
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-kaspa-cyan transition-colors"
                 data-testid="link-telegram"
               >
                 <SiTelegram className="w-5 h-5" />
-              </a>
-              <a 
-                href="#" 
-                className="text-muted-foreground hover:text-kaspa-cyan transition-colors"
-                data-testid="link-discord"
-              >
-                <SiDiscord className="w-5 h-5" />
               </a>
             </div>
           </div>

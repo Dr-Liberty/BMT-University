@@ -52,7 +52,7 @@ export default function HeroSection() {
           Complete lessons, pass quizzes, and earn <span className="text-bmt-orange font-semibold">$BMT tokens</span> on the Kaspa network.
         </p>
 
-        <div className="flex items-center justify-center mb-16">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <Link href="/courses">
             <Button
               size="lg"
@@ -61,6 +61,17 @@ export default function HeroSection() {
             >
               <BookOpen className="w-5 h-5" />
               Explore Courses
+            </Button>
+          </Link>
+          <Link href="/dashboard">
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-bmt-orange text-bmt-orange font-heading uppercase tracking-wide px-8 gap-2"
+              data-testid="button-hero-dashboard"
+            >
+              <Award className="w-5 h-5" />
+              Dashboard
             </Button>
           </Link>
         </div>

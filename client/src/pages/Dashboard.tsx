@@ -338,24 +338,27 @@ export default function Dashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-muted">
-            <TabsTrigger value="courses" className="gap-2" data-testid="tab-my-courses">
-              <BookOpen className="w-4 h-4" />
-              My Courses
-            </TabsTrigger>
-            <TabsTrigger value="certificates" className="gap-2" data-testid="tab-certificates">
-              <Award className="w-4 h-4" />
-              Certificates
-            </TabsTrigger>
-            <TabsTrigger value="rewards" className="gap-2" data-testid="tab-rewards">
-              <Coins className="w-4 h-4" />
-              Rewards
-            </TabsTrigger>
-            <TabsTrigger value="referrals" className="gap-2" data-testid="tab-referrals">
-              <Users className="w-4 h-4" />
-              Referrals
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="bg-muted inline-flex min-w-max">
+              <TabsTrigger value="courses" className="gap-2" data-testid="tab-my-courses">
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">My </span>Courses
+              </TabsTrigger>
+              <TabsTrigger value="certificates" className="gap-2" data-testid="tab-certificates">
+                <Award className="w-4 h-4" />
+                <span className="hidden sm:inline">Certificates</span>
+                <span className="sm:hidden">Certs</span>
+              </TabsTrigger>
+              <TabsTrigger value="rewards" className="gap-2" data-testid="tab-rewards">
+                <Coins className="w-4 h-4" />
+                Rewards
+              </TabsTrigger>
+              <TabsTrigger value="referrals" className="gap-2" data-testid="tab-referrals">
+                <Users className="w-4 h-4" />
+                Referrals
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="courses" className="space-y-6">
             {inProgressCourses.length > 0 && (

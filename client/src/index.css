@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global Mobile Scroll Fix */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 /* BMT UNIVERSITY - Dark Theme Only */
 :root {
   --button-outline: rgba(255,255,255, .10);
