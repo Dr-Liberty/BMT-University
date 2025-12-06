@@ -48,7 +48,7 @@ export default function HeroSection() {
         </p>
 
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
-          Master BlockDAG & crypto through Detailed courses with interactive quizes. Join us in Unlocking Kaspas Learn-to-Earn potential. 
+          Master BlockDAG & crypto through detailed courses with interactive quizes. Join us in unlocking Kaspas Learn-to-Earn potential. 
           Complete lessons, pass quizzes, and earn <span className="text-bmt-orange font-semibold">$BMT tokens</span> on the Kaspa network.
         </p>
 
