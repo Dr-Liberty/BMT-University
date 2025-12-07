@@ -2,7 +2,7 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Clock, Users, Star, BookOpen } from 'lucide-react';
+import { Clock, Users, Star, BookOpen, CheckCircle } from 'lucide-react';
 import type { Course as APICourse } from '@shared/schema';
 
 export interface CourseDisplay {
@@ -117,14 +117,26 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
           <span className="text-sm text-muted-foreground">$BMT</span>
         </div>
         {enrolled ? (
-          <Button 
-            size="sm"
-            onClick={() => onContinue?.(course.id)}
-            className="bg-kaspa-cyan text-background hover:bg-kaspa-cyan/90"
-            data-testid={`button-continue-${course.id}`}
-          >
-            Continue
-          </Button>
+          course.progress === 100 ? (
+            <Button 
+              size="sm"
+              onClick={() => onContinue?.(course.id)}
+              className="bg-kaspa-green text-background hover:bg-kaspa-green/90"
+              data-testid={`button-completed-${course.id}`}
+            >
+              <CheckCircle className="w-4 h-4 mr-1" />
+              Completed
+            </Button>
+          ) : (
+            <Button 
+              size="sm"
+              onClick={() => onContinue?.(course.id)}
+              className="bg-kaspa-cyan text-background hover:bg-kaspa-cyan/90"
+              data-testid={`button-continue-${course.id}`}
+            >
+              Continue
+            </Button>
+          )
         ) : (
           <Button 
             size="sm"
