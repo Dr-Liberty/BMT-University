@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,43 @@ import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import type { Course as CourseType, Lesson, Quiz, Enrollment, Module } from '@shared/schema';
+
+function isTwitterUrl(url: string): boolean {
+  return url.includes('twitter.com/') || url.includes('x.com/');
+}
+
+function TwitterEmbed({ url }: { url: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://platform.twitter.com/widgets.js';
+    script.async = true;
+    script.charset = 'utf-8';
+    
+    script.onload = () => {
+      if ((window as any).twttr && containerRef.current) {
+        (window as any).twttr.widgets.load(containerRef.current);
+      }
+    };
+    
+    document.body.appendChild(script);
+    
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, [url]);
+  
+  return (
+    <div ref={containerRef} className="flex justify-center mb-4">
+      <blockquote className="twitter-tweet" data-theme="dark" data-width="550">
+        <a href={url}>Loading video...</a>
+      </blockquote>
+    </div>
+  );
+}
 
 interface CourseWithDetails extends CourseType {
   lessons?: Lesson[];
@@ -253,27 +290,31 @@ export default function Course() {
               </div>
             )}
             {lesson.videoUrl && (
-              <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
-                {isDirectVideo(lesson.videoUrl) ? (
-                  <video
-                    src={lesson.videoUrl}
-                    controls
-                    className="w-full h-full"
-                    data-testid={`video-lesson-${lesson.id}`}
-                  >
-                    Your browser does not support the video tag.
-                  </video>
-                ) : (
-                  <iframe
-                    src={getVideoEmbedUrl(lesson.videoUrl) || lesson.videoUrl}
-                    className="w-full h-full"
-                    allowFullScreen
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    title={lesson.title}
-                    data-testid={`iframe-lesson-${lesson.id}`}
-                  />
-                )}
-              </div>
+              isTwitterUrl(lesson.videoUrl) ? (
+                <TwitterEmbed url={lesson.videoUrl} />
+              ) : (
+                <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
+                  {isDirectVideo(lesson.videoUrl) ? (
+                    <video
+                      src={lesson.videoUrl}
+                      controls
+                      className="w-full h-full"
+                      data-testid={`video-lesson-${lesson.id}`}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <iframe
+                      src={getVideoEmbedUrl(lesson.videoUrl) || lesson.videoUrl}
+                      className="w-full h-full"
+                      allowFullScreen
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      title={lesson.title}
+                      data-testid={`iframe-lesson-${lesson.id}`}
+                    />
+                  )}
+                </div>
+              )
             )}
             {lesson.contentBlocks && lesson.contentBlocks.length > 0 ? (
               <div className="space-y-4 mb-4">
