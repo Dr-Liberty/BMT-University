@@ -19,6 +19,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState(false);
   const { toast } = useToast();
   
   const { address, isConnected, chain } = useAccount();
@@ -29,18 +30,15 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     const token = getAuthToken();
     const demoMode = localStorage.getItem('demoMode') === 'true';
     if (token) {
-      verifyExistingSession(token);
-      if (demoMode) {
-        setIsDemoMode(true);
-      }
+      verifyExistingSession(token, demoMode);
     }
   }, []);
 
   useEffect(() => {
-    if (address && isConnected && !isAuthenticated && !isAuthenticating && !isDemoMode) {
+    if (address && isConnected && !isAuthenticated && !isAuthenticating && !isDemoMode && !isVerifyingSession) {
       handleAuthentication(address);
     }
-  }, [address, isConnected, isAuthenticated, isAuthenticating, isDemoMode]);
+  }, [address, isConnected, isAuthenticated, isAuthenticating, isDemoMode, isVerifyingSession]);
 
   useEffect(() => {
     if (!isConnected && isAuthenticated && !isDemoMode) {
@@ -48,7 +46,8 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     }
   }, [isConnected, isAuthenticated, isDemoMode]);
 
-  const verifyExistingSession = async (token: string) => {
+  const verifyExistingSession = async (token: string, demoMode: boolean) => {
+    setIsVerifyingSession(true);
     try {
       const res = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
@@ -57,12 +56,28 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
         const user: User = await res.json();
         if (user) {
           setIsAuthenticated(true);
+          if (demoMode) {
+            setIsDemoMode(true);
+          }
+        } else {
+          clearAuthToken();
+          localStorage.removeItem('demoMode');
+          setIsAuthenticated(false);
+          setIsDemoMode(false);
         }
       } else {
         clearAuthToken();
+        localStorage.removeItem('demoMode');
+        setIsAuthenticated(false);
+        setIsDemoMode(false);
       }
     } catch {
       clearAuthToken();
+      localStorage.removeItem('demoMode');
+      setIsAuthenticated(false);
+      setIsDemoMode(false);
+    } finally {
+      setIsVerifyingSession(false);
     }
   };
 
