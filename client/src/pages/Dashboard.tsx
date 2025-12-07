@@ -206,8 +206,8 @@ export default function Dashboard() {
     .map(mapEnrollmentToDisplay)
     .filter((c): c is CourseDisplay => c !== null);
 
-  const completedCourses = enrolledCourses.filter(c => c.progress === 100);
-  const inProgressCourses = enrolledCourses.filter(c => (c.progress ?? 0) < 100);
+  const completedCourses = enrolledCourses.filter(c => Number(c.progress ?? 0) >= 100);
+  const inProgressCourses = enrolledCourses.filter(c => Number(c.progress ?? 0) < 100);
   const totalEarned = rewards.reduce((sum, r) => sum + r.amount, 0);
 
   const rewardTransactions: RewardTransaction[] = rewards.map(r => mapRewardToTransaction(r, allCourses));

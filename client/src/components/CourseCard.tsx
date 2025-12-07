@@ -50,6 +50,8 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
   const difficulty = (course.difficulty || 'beginner').toLowerCase();
   const difficultyClass = difficultyColors[difficulty] || difficultyColors.beginner;
   const category = course.category || 'general';
+  const progressValue = Number(course.progress ?? 0);
+  const isCompleted = progressValue >= 100;
 
   return (
     <Card 
@@ -117,7 +119,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
           <span className="text-sm text-muted-foreground">$BMT</span>
         </div>
         {enrolled ? (
-          course.progress === 100 ? (
+          isCompleted ? (
             <Button 
               size="sm"
               onClick={() => onContinue?.(course.id)}
