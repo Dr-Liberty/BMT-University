@@ -53,7 +53,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
 
   return (
     <Card 
-      className="bg-card border-border hover:border-kaspa-cyan/50 transition-all group overflow-visible"
+      className="bg-card border-border hover:border-kaspa-cyan/50 transition-all group overflow-visible flex flex-col h-full"
       data-testid={`card-course-${course.id}`}
     >
       <div className="relative aspect-video bg-muted rounded-t-md overflow-hidden">
@@ -75,11 +75,11 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
         </Badge>
       </div>
 
-      <CardContent className="p-4">
+      <CardContent className="p-4 flex-1 flex flex-col">
         <h3 className="font-heading font-semibold text-lg text-white mb-2 line-clamp-2 group-hover:text-kaspa-cyan transition-colors" data-testid={`text-course-title-${course.id}`}>
           {course.title}
         </h3>
-        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+        <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-1">
           {course.shortDescription || course.description}
         </p>
 

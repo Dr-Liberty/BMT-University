@@ -64,7 +64,7 @@ function mapEnrollmentToDisplay(enrollment: EnrollmentWithCourse): CourseDisplay
     enrollmentCount: course.enrollmentCount,
     rating: course.rating,
     bmtReward: course.bmtReward,
-    progress: enrollment.progress ?? 0,
+    progress: Number(enrollment.progress ?? 0),
   };
 }
 
