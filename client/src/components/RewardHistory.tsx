@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { ExternalLink, Award, CheckCircle2, Clock, Loader2, Coins } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -34,7 +33,7 @@ const typeIcons = {
   referral: Award,
 };
 
-export default function RewardHistory({ transactions, maxHeight = '400px' }: RewardHistoryProps) {
+export default function RewardHistory({ transactions, maxHeight }: RewardHistoryProps) {
   const { toast } = useToast();
 
   const claimMutation = useMutation({
@@ -84,7 +83,7 @@ export default function RewardHistory({ transactions, maxHeight = '400px' }: Rew
         </div>
       </CardHeader>
       <CardContent>
-        <ScrollArea style={{ maxHeight }} className="pr-4">
+        <div className={maxHeight ? "overflow-y-auto pr-4" : "space-y-4"} style={maxHeight ? { maxHeight } : undefined}>
           <div className="space-y-4">
             {transactions.map((tx) => {
               const Icon = typeIcons[tx.type];
@@ -181,7 +180,7 @@ export default function RewardHistory({ transactions, maxHeight = '400px' }: Rew
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
       </CardContent>
     </Card>
   );
