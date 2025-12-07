@@ -998,6 +998,19 @@ export async function registerRoutes(
   // Check quiz cooldown status (24-hour cooldown after 3 failed attempts)
   app.get("/api/quizzes/:quizId/cooldown", authMiddleware, async (req: any, res) => {
     try {
+      // Check if demo wallet user (skip cooldown for demo mode)
+      const user = await storage.getUser(req.user.id);
+      const isDemoWallet = user?.walletAddress?.toLowerCase() === '0xdead000000000000000000000000000000000001';
+      
+      // Demo users never have cooldown
+      if (isDemoWallet) {
+        return res.json({ 
+          onCooldown: false,
+          failedAttempts: 0,
+          attemptsUntilCooldown: 999
+        });
+      }
+      
       const failedAttemptsLast24h = await storage.getFailedAttemptsLast24Hours(req.user.id, req.params.quizId);
       
       if (failedAttemptsLast24h.length >= 3) {
@@ -1046,15 +1059,20 @@ export async function registerRoutes(
       // ============ ANTI-ABUSE CHECK 1: Per-course reward cap ============
       const alreadyRewarded = await storage.hasUserCompletedCourseReward(req.user.id, course.id);
       
-      // Check attempt limit
+      // Check if this is a demo wallet user (skip attempt limits for demo mode)
+      const user = await storage.getUser(req.user.id);
+      const isDemoWallet = user?.walletAddress?.toLowerCase() === '0xdead000000000000000000000000000000000001';
+      
+      // Check attempt limit (skip for demo mode users)
       const previousAttempts = await storage.getQuizAttempts(req.user.id, quiz.id);
-      if (quiz.maxAttempts && previousAttempts.length >= quiz.maxAttempts) {
+      if (!isDemoWallet && quiz.maxAttempts && previousAttempts.length >= quiz.maxAttempts) {
         return res.status(400).json({ error: "Maximum attempts reached" });
       }
       
       // ============ 24-HOUR COOLDOWN AFTER 3 FAILED ATTEMPTS ============
+      // Skip cooldown for demo wallet users
       const failedAttemptsLast24h = await storage.getFailedAttemptsLast24Hours(req.user.id, quiz.id);
-      if (failedAttemptsLast24h.length >= 3) {
+      if (!isDemoWallet && failedAttemptsLast24h.length >= 3) {
         // Array is sorted ascending, so first element is the oldest (earliest) attempt
         const oldestFailedAttempt = failedAttemptsLast24h[0];
         const cooldownEndsAt = new Date(oldestFailedAttempt.startedAt!.getTime() + 24 * 60 * 60 * 1000);
