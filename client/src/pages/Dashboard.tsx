@@ -43,6 +43,7 @@ interface ReferralWithUser extends Referral {
 
 interface EnrollmentWithCourse extends Enrollment {
   course?: Course;
+  quizPassed?: boolean;
 }
 
 interface CertificateWithCourse extends CertificateType {
@@ -65,6 +66,7 @@ function mapEnrollmentToDisplay(enrollment: EnrollmentWithCourse): CourseDisplay
     rating: course.rating,
     bmtReward: course.bmtReward,
     progress: Number(enrollment.progress ?? 0),
+    quizPassed: enrollment.quizPassed,
   };
 }
 
@@ -206,8 +208,8 @@ export default function Dashboard() {
     .map(mapEnrollmentToDisplay)
     .filter((c): c is CourseDisplay => c !== null);
 
-  const completedCourses = enrolledCourses.filter(c => Number(c.progress ?? 0) >= 100);
-  const inProgressCourses = enrolledCourses.filter(c => Number(c.progress ?? 0) < 100);
+  const completedCourses = enrolledCourses.filter(c => c.quizPassed === true || Number(c.progress ?? 0) >= 100);
+  const inProgressCourses = enrolledCourses.filter(c => c.quizPassed !== true && Number(c.progress ?? 0) < 100);
   const totalEarned = rewards.reduce((sum, r) => sum + r.amount, 0);
 
   const rewardTransactions: RewardTransaction[] = rewards.map(r => mapRewardToTransaction(r, allCourses));

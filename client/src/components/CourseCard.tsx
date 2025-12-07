@@ -18,6 +18,7 @@ export interface CourseDisplay {
   rating?: string | null;
   bmtReward: number;
   progress?: number;
+  quizPassed?: boolean;
 }
 
 interface CourseCardProps {
@@ -51,7 +52,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
   const difficultyClass = difficultyColors[difficulty] || difficultyColors.beginner;
   const category = course.category || 'general';
   const progressValue = Number(course.progress ?? 0);
-  const isCompleted = progressValue >= 100;
+  const isCompleted = course.quizPassed === true || progressValue >= 100;
 
   return (
     <Card 

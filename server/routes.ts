@@ -1286,11 +1286,20 @@ export async function registerRoutes(
     try {
       const enrollments = await storage.getEnrollmentsByUser(req.user.id);
       
-      // Include course details
+      // Include course details and quiz pass status
       const enrollmentsWithCourses = await Promise.all(
         enrollments.map(async (enrollment) => {
           const course = await storage.getCourse(enrollment.courseId);
-          return { ...enrollment, course };
+          
+          // Check if user has passed the quiz for this course
+          let quizPassed = false;
+          const quiz = await storage.getQuizByCourse(enrollment.courseId);
+          if (quiz) {
+            const attempts = await storage.getQuizAttempts(req.user.id, quiz.id);
+            quizPassed = attempts.some(a => a.passed);
+          }
+          
+          return { ...enrollment, course, quizPassed };
         })
       );
       
