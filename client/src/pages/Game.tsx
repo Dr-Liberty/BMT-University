@@ -151,43 +151,107 @@ export default function Game() {
     const x = player.x - cameraX;
     const y = player.y;
     
-    ctx.fillStyle = '#00D9D9';
-    ctx.beginPath();
-    ctx.roundRect(x + 5, y + 15, 30, 35, 8);
-    ctx.fill();
+    // Silver lid with ridges
+    ctx.fillStyle = '#D4D4D4';
+    ctx.fillRect(x + 8, y, 24, 5);
+    ctx.fillStyle = '#B8B8B8';
+    ctx.fillRect(x + 5, y + 4, 30, 8);
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + 8 + i * 7, y + 5);
+      ctx.lineTo(x + 8 + i * 7, y + 11);
+      ctx.stroke();
+    }
     
-    ctx.fillStyle = '#C0C0C0';
-    ctx.fillRect(x + 3, y + 8, 34, 10);
-    ctx.fillRect(x + 8, y, 24, 12);
-    
-    ctx.fillStyle = '#00FFFF';
-    ctx.beginPath();
-    ctx.ellipse(x + 12, y + 32, 4, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(x + 28, y + 32, 4, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + 12, y + 32, 2, 0, Math.PI * 2);
-    ctx.arc(x + 28, y + 32, 2, 0, Math.PI * 2);
-    ctx.fill();
-    
-    ctx.strokeStyle = '#00FFFF';
+    // Glass jar outline
+    ctx.strokeStyle = 'rgba(180, 180, 180, 0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x, y + 35);
-    ctx.lineTo(x - 5, y + 45);
-    ctx.moveTo(x + 40, y + 35);
-    ctx.lineTo(x + 45, y + 45);
+    ctx.roundRect(x + 5, y + 12, 30, 38, 4);
     ctx.stroke();
     
+    // Orange liquid inside jar
+    const liquidGradient = ctx.createLinearGradient(x, y + 14, x, y + 48);
+    liquidGradient.addColorStop(0, '#FF9500');
+    liquidGradient.addColorStop(0.4, '#FFB347');
+    liquidGradient.addColorStop(0.8, '#FF8C00');
+    liquidGradient.addColorStop(1, '#E67300');
+    ctx.fillStyle = liquidGradient;
     ctx.beginPath();
-    ctx.moveTo(x + 10, y + 50);
-    ctx.lineTo(x + 5, y + 65);
-    ctx.moveTo(x + 30, y + 50);
-    ctx.lineTo(x + 35, y + 65);
+    ctx.roundRect(x + 7, y + 14, 26, 34, 3);
+    ctx.fill();
+    
+    // Liquid shine highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.fillRect(x + 9, y + 17, 4, 26);
+    
+    // Big cartoon eyes - white
+    ctx.fillStyle = '#FFF';
+    ctx.beginPath();
+    ctx.ellipse(x + 14, y + 28, 6, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 27, y + 28, 6, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eye outlines
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(x + 14, y + 28, 6, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(x + 27, y + 28, 6, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Pupils
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 15, y + 29, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 28, y + 29, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eye shine
+    ctx.fillStyle = '#FFF';
+    ctx.beginPath();
+    ctx.arc(x + 13, y + 26, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 26, y + 26, 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Cute smile
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 20, y + 38, 5, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+    
+    // Stick arms
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y + 30);
+    ctx.lineTo(x - 4, y + 40);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 35, y + 30);
+    ctx.lineTo(x + 44, y + 40);
+    ctx.stroke();
+    
+    // Stick legs
+    ctx.beginPath();
+    ctx.moveTo(x + 12, y + 50);
+    ctx.lineTo(x + 7, y + 64);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 28, y + 50);
+    ctx.lineTo(x + 33, y + 64);
     ctx.stroke();
   };
 
@@ -252,35 +316,97 @@ export default function Game() {
     
     const x = enemy.x - cameraX;
     const y = enemy.y;
+    const w = enemy.width;
+    const h = enemy.height;
     
-    ctx.fillStyle = '#FF8C00';
+    // Shell (orange/brown like a Koopa)
+    const shellGradient = ctx.createRadialGradient(x + w/2, y + h/2, 5, x + w/2, y + h/2, w/2);
+    shellGradient.addColorStop(0, '#FF8C00');
+    shellGradient.addColorStop(0.5, '#E67300');
+    shellGradient.addColorStop(1, '#8B4513');
+    ctx.fillStyle = shellGradient;
     ctx.beginPath();
-    ctx.ellipse(x + enemy.width / 2, y + enemy.height / 2, enemy.width / 2, enemy.height / 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + w/2, y + h/2 + 5, w/2 - 2, h/2 - 5, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 20px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('₿', x + enemy.width / 2, y + enemy.height / 2 + 7);
+    // Shell outline
+    ctx.strokeStyle = '#5D3A1A';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x + w/2, y + h/2 + 5, w/2 - 2, h/2 - 5, 0, 0, Math.PI * 2);
+    ctx.stroke();
     
+    // Shell hexagon pattern
+    ctx.strokeStyle = '#5D3A1A';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 15, y + h/2);
+    ctx.lineTo(x + w - 15, y + h/2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w/2, y + 8);
+    ctx.lineTo(x + w/2, y + h - 3);
+    ctx.stroke();
+    
+    // Lightning bolt on shell (Bitcoin Lightning Network)
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.moveTo(x + w/2 + 2, y + 10);
+    ctx.lineTo(x + w/2 - 5, y + h/2 + 2);
+    ctx.lineTo(x + w/2 - 1, y + h/2 + 2);
+    ctx.lineTo(x + w/2 - 4, y + h - 5);
+    ctx.lineTo(x + w/2 + 5, y + h/2 - 2);
+    ctx.lineTo(x + w/2 + 1, y + h/2 - 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#CC9900';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // Head (green like Koopa)
+    ctx.fillStyle = '#3D8B40';
+    ctx.beginPath();
+    ctx.ellipse(x + w/2, y + 5, 12, 10, 0, Math.PI, 2 * Math.PI);
+    ctx.fill();
+    
+    // Eyes
     ctx.fillStyle = '#FFF';
     ctx.beginPath();
-    ctx.arc(x + 15, y + 12, 6, 0, Math.PI * 2);
-    ctx.arc(x + 35, y + 12, 6, 0, Math.PI * 2);
+    ctx.ellipse(x + w/2 - 6, y + 2, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w/2 + 6, y + 2, 5, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     
+    // Pupils (angry looking)
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.arc(x + 15, y + 12, 3, 0, Math.PI * 2);
-    ctx.arc(x + 35, y + 12, 3, 0, Math.PI * 2);
+    ctx.arc(x + w/2 - 5, y + 3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + w/2 + 7, y + 3, 2, 0, Math.PI * 2);
     ctx.fill();
     
-    ctx.strokeStyle = '#8B4513';
-    ctx.lineWidth = 3;
+    // Angry eyebrows
+    ctx.strokeStyle = '#2D6B30';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + 10, y + 28);
-    ctx.quadraticCurveTo(x + 25, y + 35, x + 40, y + 28);
+    ctx.moveTo(x + w/2 - 10, y - 2);
+    ctx.lineTo(x + w/2 - 3, y + 1);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w/2 + 10, y - 2);
+    ctx.lineTo(x + w/2 + 3, y + 1);
+    ctx.stroke();
+    
+    // Feet
+    ctx.fillStyle = '#E67300';
+    ctx.beginPath();
+    ctx.ellipse(x + 10, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w - 10, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
   };
 
   const drawPlatform = (ctx: CanvasRenderingContext2D, platform: Platform, cameraX: number) => {
@@ -408,13 +534,28 @@ export default function Game() {
     }
 
     for (const block of game.blocks) {
+      const horizontalOverlap = player.x + player.width > block.x && player.x < block.x + block.width;
+      
+      // Land on top of blocks (like platforms)
+      if (
+        horizontalOverlap &&
+        player.y + player.height > block.y &&
+        player.y + player.height < block.y + 15 &&
+        player.velocityY >= 0
+      ) {
+        player.y = block.y - player.height;
+        player.velocityY = 0;
+        player.onGround = true;
+        player.isJumping = false;
+      }
+      
       if (block.hit) continue;
       
+      // Hit block from below (jumping up into it)
       const hitFromBelow = 
-        player.x + player.width > block.x &&
-        player.x < block.x + block.width &&
+        horizontalOverlap &&
         player.y < block.y + block.height &&
-        player.y > block.y &&
+        player.y + player.height > block.y + block.height - 10 &&
         player.velocityY < 0;
       
       if (hitFromBelow) {
