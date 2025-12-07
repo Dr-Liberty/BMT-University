@@ -126,8 +126,6 @@ export default function Game() {
     ];
 
     game.blocks = [
-      // Easy first block - directly above where player can jump from ground
-      { x: 150, y: CANVAS_HEIGHT - 150, width: 40, height: 40, type: 'blue', hit: false, tearCollected: false },
       { x: 350, y: CANVAS_HEIGHT - 220, width: 40, height: 40, type: 'blue', hit: false, tearCollected: false },
       { x: 600, y: CANVAS_HEIGHT - 280, width: 40, height: 40, type: 'blue', hit: false, tearCollected: false },
       { x: 700, y: CANVAS_HEIGHT - 280, width: 40, height: 40, type: 'red', hit: false, tearCollected: false },
@@ -582,38 +580,26 @@ export default function Game() {
       
       if (block.hit) continue;
       
-      // Hit block from below - must be moving UP and head inside block
-      const headY = player.y;
-      const blockTop = block.y;
-      const blockBottom = block.y + block.height;
-      
-      // Debug: Log when player is near a block
-      if (horizontalOverlap && headY < blockBottom + 50 && headY > blockTop - 50) {
-        console.log('NEAR BLOCK:', block.type, 'headY=', headY, 'blockTop=', blockTop, 'blockBottom=', blockBottom, 'velY=', player.velocityY);
-      }
-      
-      const hitFromBelow = 
-        horizontalOverlap &&
-        headY <= blockBottom && // Head has entered block region
-        headY >= blockTop - 15 && // Head is near/inside block (expanded buffer)
-        player.velocityY < 0; // Moving up
-      
-      if (hitFromBelow) {
-        console.log('HIT BLOCK:', block.type, 'at', block.x, block.y);
-        block.hit = true;
-        player.velocityY = 2;
+      // Hit block from below - only red blocks cause game over
+      if (block.type === 'red') {
+        const headY = player.y;
+        const blockBottom = block.y + block.height;
         
-        if (block.type === 'red') {
+        const hitFromBelow = 
+          horizontalOverlap &&
+          headY <= blockBottom &&
+          headY >= block.y - 10 &&
+          player.velocityY < 0;
+        
+        if (hitFromBelow) {
+          block.hit = true;
+          player.velocityY = 2;
           setGameState('gameover');
           if (score > highScore) {
             setHighScore(score);
             submitScoreMutation.mutate(score);
           }
           return;
-        } else {
-          setScore(prev => prev + 100);
-          setTearsCollected(prev => prev + 1);
-          setTimeout(() => { block.tearCollected = true; }, 500);
         }
       }
     }
