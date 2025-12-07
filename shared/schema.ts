@@ -538,3 +538,20 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
 export type Referral = typeof referrals.$inferSelect;
+
+// ============ GAME SCORES ============
+export const gameScores = pgTable("game_scores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
+  score: integer("score").notNull(),
+  tearsCollected: integer("tears_collected").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGameScoreSchema = createInsertSchema(gameScores).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGameScore = z.infer<typeof insertGameScoreSchema>;
+export type GameScore = typeof gameScores.$inferSelect;

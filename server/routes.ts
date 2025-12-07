@@ -2616,5 +2616,61 @@ export async function registerRoutes(
     }
   });
 
+  // ============ GAME ROUTES ============
+  
+  // Get game leaderboard (public)
+  app.get("/api/game/leaderboard", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const leaderboard = await storage.getGameLeaderboard(Math.min(limit, 50));
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ error: "Failed to fetch leaderboard" });
+    }
+  });
+
+  // Submit game score (requires auth)
+  app.post("/api/game/score", authMiddleware, async (req: any, res) => {
+    try {
+      const { score, tearsCollected } = req.body;
+      
+      if (typeof score !== 'number' || score < 0) {
+        return res.status(400).json({ error: "Invalid score" });
+      }
+      
+      // Basic sanity check - max reasonable score per session
+      // 14 blue blocks × 100 points + 5 enemies × 50 points = 1650 max theoretical
+      // Allow some buffer for future content
+      const MAX_REASONABLE_SCORE = 5000;
+      if (score > MAX_REASONABLE_SCORE) {
+        console.warn(`[Game] Suspicious score submitted: ${score} by ${req.user.walletAddress}`);
+        return res.status(400).json({ error: "Score exceeds maximum possible" });
+      }
+      
+      const gameScore = await storage.createGameScore(
+        req.user.walletAddress,
+        Math.floor(score), // Ensure integer
+        Math.floor(tearsCollected || 0)
+      );
+      
+      res.json(gameScore);
+    } catch (error) {
+      console.error("Error submitting score:", error);
+      res.status(500).json({ error: "Failed to submit score" });
+    }
+  });
+
+  // Get user's high score
+  app.get("/api/game/highscore", authMiddleware, async (req: any, res) => {
+    try {
+      const highScore = await storage.getHighScoreByWallet(req.user.walletAddress);
+      res.json(highScore || { score: 0 });
+    } catch (error) {
+      console.error("Error fetching high score:", error);
+      res.status(500).json({ error: "Failed to fetch high score" });
+    }
+  });
+
   return httpServer;
 }

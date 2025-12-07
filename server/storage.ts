@@ -17,6 +17,7 @@ import {
   type ReferralSettings, type UpdateReferralSettings,
   type ReferralCode, type InsertReferralCode,
   type Referral, type InsertReferral,
+  type GameScore, type InsertGameScore,
   users, courses, modules, lessons, lessonProgress,
   quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
@@ -24,6 +25,7 @@ import {
   paymasterConfig, payoutTransactions,
   deviceFingerprints, suspiciousActivity,
   referralSettings, referralCodes, referrals,
+  gameScores,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -167,6 +169,11 @@ export interface IStorage {
   updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined>;
   getReferralStats(userId: string): Promise<{ totalReferrals: number; pendingReferrals: number; qualifiedReferrals: number; rewardedReferrals: number; totalBmtEarned: number }>;
   getAllReferrals(): Promise<Referral[]>;
+  
+  // Game score methods
+  getGameLeaderboard(limit?: number): Promise<GameScore[]>;
+  createGameScore(walletAddress: string, score: number, tearsCollected?: number): Promise<GameScore>;
+  getHighScoreByWallet(walletAddress: string): Promise<GameScore | undefined>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -1096,6 +1103,32 @@ export class DatabaseStorage implements IStorage {
 
   async getAllReferrals(): Promise<Referral[]> {
     return await db.select().from(referrals).orderBy(desc(referrals.createdAt));
+  }
+
+  // Game score methods
+  async getGameLeaderboard(limit: number = 10): Promise<GameScore[]> {
+    return await db.select()
+      .from(gameScores)
+      .orderBy(desc(gameScores.score))
+      .limit(limit);
+  }
+
+  async createGameScore(walletAddress: string, score: number, tearsCollected: number = 0): Promise<GameScore> {
+    const [gameScore] = await db.insert(gameScores).values({
+      walletAddress,
+      score,
+      tearsCollected,
+    }).returning();
+    return gameScore;
+  }
+
+  async getHighScoreByWallet(walletAddress: string): Promise<GameScore | undefined> {
+    const scores = await db.select()
+      .from(gameScores)
+      .where(eq(gameScores.walletAddress, walletAddress))
+      .orderBy(desc(gameScores.score))
+      .limit(1);
+    return scores[0];
   }
 }
 

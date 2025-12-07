@@ -16,6 +16,7 @@ import About from "@/pages/About";
 import AboutEditor from "@/pages/AboutEditor";
 import Admin from "@/pages/Admin";
 import VerifyCertificate from "@/pages/VerifyCertificate";
+import Game from "@/pages/Game";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/admin/about" component={AboutEditor} />
       <Route path="/admin" component={Admin} />
       <Route path="/verify/:code" component={VerifyCertificate} />
+      <Route path="/game" component={Game} />
       <Route component={NotFound} />
     </Switch>
   );
