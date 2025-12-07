@@ -14,6 +14,10 @@ import { useToast } from '@/hooks/use-toast';
 import { isAuthenticated } from '@/lib/auth';
 import type { Course, Enrollment } from '@shared/schema';
 
+interface EnrollmentWithQuizStatus extends Enrollment {
+  quizPassed?: boolean;
+}
+
 interface PaginatedCoursesResponse {
   courses: Course[];
   pagination: {
@@ -26,7 +30,7 @@ interface PaginatedCoursesResponse {
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
 const difficulties = ['All', 'beginner', 'intermediate', 'advanced'];
 
-function mapCourseToDisplay(course: Course): CourseDisplay {
+function mapCourseToDisplay(course: Course, enrollment?: EnrollmentWithQuizStatus): CourseDisplay {
   return {
     id: course.id,
     title: course.title,
@@ -39,6 +43,8 @@ function mapCourseToDisplay(course: Course): CourseDisplay {
     enrollmentCount: course.enrollmentCount,
     rating: course.rating,
     bmtReward: course.bmtReward,
+    progress: enrollment ? Number(enrollment.progress ?? 0) : undefined,
+    quizPassed: enrollment?.quizPassed,
   };
 }
 
@@ -56,11 +62,12 @@ export default function Courses() {
   
   const courses = coursesResponse?.courses ?? [];
 
-  const { data: enrollments = [] } = useQuery<Enrollment[]>({
+  const { data: enrollments = [] } = useQuery<EnrollmentWithQuizStatus[]>({
     queryKey: ['/api/enrollments'],
   });
 
   const enrolledCourseIds = new Set(enrollments.map(e => e.courseId));
+  const enrollmentMap = new Map(enrollments.map(e => [e.courseId, e]));
 
   const enrollMutation = useMutation({
     mutationFn: async (courseId: string) => {
@@ -225,7 +232,7 @@ export default function Courses() {
               {filteredCourses.map((course) => (
                 <CourseCard
                   key={course.id}
-                  course={mapCourseToDisplay(course)}
+                  course={mapCourseToDisplay(course, enrollmentMap.get(course.id))}
                   enrolled={enrolledCourseIds.has(course.id)}
                   onEnroll={handleEnroll}
                   onContinue={handleContinue}
