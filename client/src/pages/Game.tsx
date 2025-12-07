@@ -90,8 +90,15 @@ export default function Game() {
   });
 
   const initGame = useCallback(() => {
+    // Cancel any existing animation frame to prevent race conditions
+    if (gameRef.current.animationId) {
+      cancelAnimationFrame(gameRef.current.animationId);
+      gameRef.current.animationId = 0;
+    }
+    
     const game = gameRef.current;
     
+    // Completely reset player state
     game.player = {
       x: 100,
       y: CANVAS_HEIGHT - 150,
@@ -102,6 +109,9 @@ export default function Game() {
       isJumping: false,
       onGround: false,
     };
+    
+    // Clear any lingering key states
+    game.keys = {};
 
     game.platforms = [
       { x: 0, y: CANVAS_HEIGHT - 40, width: 3000, height: 40 },
@@ -133,11 +143,10 @@ export default function Game() {
     ];
 
     game.enemies = [
-      { x: 500, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -1.5, alive: true },
-      { x: 950, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -1.5, alive: true },
-      { x: 1350, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -1.5, alive: true },
-      { x: 1750, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -1.5, alive: true },
-      { x: 2150, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -1.5, alive: true },
+      { x: 1000, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -0.3, alive: true },
+      { x: 1500, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -0.3, alive: true },
+      { x: 2000, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -0.3, alive: true },
+      { x: 2500, y: CANVAS_HEIGHT - 80, width: 50, height: 40, velocityX: -0.3, alive: true },
     ];
 
     game.cameraX = 0;
@@ -318,94 +327,107 @@ export default function Game() {
     const y = enemy.y;
     const w = enemy.width;
     const h = enemy.height;
+    const facingLeft = enemy.velocityX < 0;
     
-    // Shell (orange/brown like a Koopa)
-    const shellGradient = ctx.createRadialGradient(x + w/2, y + h/2, 5, x + w/2, y + h/2, w/2);
-    shellGradient.addColorStop(0, '#FF8C00');
-    shellGradient.addColorStop(0.5, '#E67300');
+    // Shell (side view - oval shape)
+    const shellGradient = ctx.createLinearGradient(x, y, x + w, y + h);
+    shellGradient.addColorStop(0, '#8B4513');
+    shellGradient.addColorStop(0.3, '#FF8C00');
+    shellGradient.addColorStop(0.7, '#E67300');
     shellGradient.addColorStop(1, '#8B4513');
     ctx.fillStyle = shellGradient;
     ctx.beginPath();
-    ctx.ellipse(x + w/2, y + h/2 + 5, w/2 - 2, h/2 - 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + w/2, y + h/2 + 2, w/2 - 4, h/2 - 4, 0, 0, Math.PI * 2);
     ctx.fill();
     
     // Shell outline
     ctx.strokeStyle = '#5D3A1A';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(x + w/2, y + h/2 + 5, w/2 - 2, h/2 - 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + w/2, y + h/2 + 2, w/2 - 4, h/2 - 4, 0, 0, Math.PI * 2);
     ctx.stroke();
     
-    // Shell hexagon pattern
+    // Shell pattern (horizontal lines for side view)
     ctx.strokeStyle = '#5D3A1A';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 15, y + h/2);
-    ctx.lineTo(x + w - 15, y + h/2);
+    ctx.moveTo(x + 8, y + h/2 - 5);
+    ctx.lineTo(x + w - 8, y + h/2 - 5);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(x + w/2, y + 8);
-    ctx.lineTo(x + w/2, y + h - 3);
+    ctx.moveTo(x + 6, y + h/2 + 8);
+    ctx.lineTo(x + w - 6, y + h/2 + 8);
     ctx.stroke();
     
     // Lightning bolt on shell (Bitcoin Lightning Network)
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
-    ctx.moveTo(x + w/2 + 2, y + 10);
-    ctx.lineTo(x + w/2 - 5, y + h/2 + 2);
-    ctx.lineTo(x + w/2 - 1, y + h/2 + 2);
-    ctx.lineTo(x + w/2 - 4, y + h - 5);
-    ctx.lineTo(x + w/2 + 5, y + h/2 - 2);
-    ctx.lineTo(x + w/2 + 1, y + h/2 - 2);
+    ctx.moveTo(x + w/2 + 3, y + 6);
+    ctx.lineTo(x + w/2 - 4, y + h/2);
+    ctx.lineTo(x + w/2, y + h/2);
+    ctx.lineTo(x + w/2 - 3, y + h - 6);
+    ctx.lineTo(x + w/2 + 4, y + h/2 + 2);
+    ctx.lineTo(x + w/2, y + h/2 + 2);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#CC9900';
+    ctx.strokeStyle = '#B8860B';
     ctx.lineWidth = 1;
     ctx.stroke();
     
-    // Head (green like Koopa)
+    // Head (side view - sticking out from shell)
+    const headX = facingLeft ? x - 5 : x + w - 8;
     ctx.fillStyle = '#3D8B40';
     ctx.beginPath();
-    ctx.ellipse(x + w/2, y + 5, 12, 10, 0, Math.PI, 2 * Math.PI);
+    ctx.ellipse(headX + 6, y + h/2 - 2, 10, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2D6B30';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // Snout/beak
+    const snoutX = facingLeft ? headX - 4 : headX + 10;
+    ctx.fillStyle = '#FFE4B5';
+    ctx.beginPath();
+    ctx.ellipse(snoutX, y + h/2 + 2, 4, 3, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Eyes
+    // Eye (side view - one visible)
+    const eyeX = facingLeft ? headX + 2 : headX + 8;
     ctx.fillStyle = '#FFF';
     ctx.beginPath();
-    ctx.ellipse(x + w/2 - 6, y + 2, 5, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(eyeX, y + h/2 - 6, 5, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(x + w/2 + 6, y + 2, 5, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.stroke();
     
-    // Pupils (angry looking)
+    // Pupil (angry, looking forward)
+    const pupilX = facingLeft ? eyeX - 2 : eyeX + 2;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.arc(x + w/2 - 5, y + 3, 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(x + w/2 + 7, y + 3, 2, 0, Math.PI * 2);
+    ctx.arc(pupilX, y + h/2 - 5, 2, 0, Math.PI * 2);
     ctx.fill();
     
-    // Angry eyebrows
+    // Angry eyebrow
     ctx.strokeStyle = '#2D6B30';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + w/2 - 10, y - 2);
-    ctx.lineTo(x + w/2 - 3, y + 1);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + w/2 + 10, y - 2);
-    ctx.lineTo(x + w/2 + 3, y + 1);
+    if (facingLeft) {
+      ctx.moveTo(eyeX - 6, y + h/2 - 14);
+      ctx.lineTo(eyeX + 3, y + h/2 - 10);
+    } else {
+      ctx.moveTo(eyeX + 6, y + h/2 - 14);
+      ctx.lineTo(eyeX - 3, y + h/2 - 10);
+    }
     ctx.stroke();
     
-    // Feet
+    // Feet (two visible from side)
     ctx.fillStyle = '#E67300';
     ctx.beginPath();
-    ctx.ellipse(x + 10, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 12, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(x + w - 10, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + w - 12, y + h - 2, 6, 4, 0, 0, Math.PI * 2);
     ctx.fill();
   };
 
@@ -486,7 +508,13 @@ export default function Game() {
     ctx.fillText('← → MOVE  |  SPACE JUMP', CANVAS_WIDTH - 20, 25);
   };
 
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
+  
   const gameLoop = useCallback(() => {
+    // Stop the loop if game is not playing
+    if (gameStateRef.current !== 'playing') return;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -540,23 +568,29 @@ export default function Game() {
       if (
         horizontalOverlap &&
         player.y + player.height > block.y &&
-        player.y + player.height < block.y + 15 &&
+        player.y + player.height < block.y + 20 &&
         player.velocityY >= 0
       ) {
         player.y = block.y - player.height;
         player.velocityY = 0;
         player.onGround = true;
         player.isJumping = false;
+        continue; // Skip hit detection if landing on top
       }
       
       if (block.hit) continue;
       
-      // Hit block from below (jumping up into it)
+      // Hit block from below - must be moving UP and head inside block
+      const headY = player.y;
+      const feetY = player.y + player.height;
+      const blockTop = block.y;
+      const blockBottom = block.y + block.height;
+      
       const hitFromBelow = 
         horizontalOverlap &&
-        player.y < block.y + block.height &&
-        player.y + player.height > block.y + block.height - 10 &&
-        player.velocityY < 0;
+        headY < blockBottom && // Head is above block bottom
+        headY > blockTop - 10 && // Head is near/inside block
+        player.velocityY < 0; // Moving up
       
       if (hitFromBelow) {
         block.hit = true;
@@ -592,21 +626,23 @@ export default function Game() {
       const enemyBottom = enemy.y + enemy.height;
       const enemyRight = enemy.x + enemy.width;
       
-      const horizontalOverlap = playerRight > enemy.x + 10 && player.x < enemyRight - 10;
+      // Check if player overlaps with enemy at all
+      const horizontalOverlap = playerRight > enemy.x + 5 && player.x < enemyRight - 5;
       const verticalOverlap = playerBottom > enemyTop && player.y < enemyBottom;
       
       if (horizontalOverlap && verticalOverlap) {
-        // Stomp detection: must be falling AND feet in top 60% of enemy
-        const isFalling = player.velocityY > 0;
-        const enemyMidpoint = enemyTop + enemy.height * 0.6;
-        const feetInStompZone = playerBottom <= enemyMidpoint;
+        // Simple stomp: if player's bottom is in top 70% of enemy, it's a stomp
+        const stompThreshold = enemyTop + enemy.height * 0.7;
+        const isValidStomp = playerBottom <= stompThreshold;
         
-        if (isFalling && feetInStompZone) {
+        if (isValidStomp) {
+          // Successful stomp!
           enemy.alive = false;
-          player.y = enemyTop - player.height; // Position above enemy
-          player.velocityY = JUMP_FORCE * 0.6; // Bounce up
+          player.y = enemyTop - player.height;
+          player.velocityY = JUMP_FORCE * 0.6;
           setScore(prev => prev + 50);
         } else {
+          // Side collision - game over
           setGameState('gameover');
           if (score > highScore) {
             setHighScore(score);
