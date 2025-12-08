@@ -96,6 +96,8 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
               const Icon = typeIcons[tx.type];
               const isPending = tx.status === 'pending';
               const isProcessing = tx.status === 'processing';
+              const isFailed = tx.status === 'failed';
+              const canClaim = isPending || isFailed;
               const isClaiming = claimMutation.isPending && claimMutation.variables === tx.id;
               
               return (
@@ -166,7 +168,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
                       </span>
                       <p className="text-xs text-muted-foreground">$BMT</p>
                     </div>
-                    {isPending && (
+                    {canClaim && (
                       <Button
                         size="sm"
                         onClick={() => claimMutation.mutate(tx.id)}
@@ -182,7 +184,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
                         ) : (
                           <>
                             <Coins className="w-3 h-3" />
-                            Claim
+                            {isFailed ? 'Retry' : 'Claim'}
                           </>
                         )}
                       </Button>

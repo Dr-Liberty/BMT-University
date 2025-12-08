@@ -1636,9 +1636,9 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Reward not found" });
       }
       
-      // Allow retry for pending or stuck processing rewards
-      if (reward.status !== 'pending' && reward.status !== 'processing') {
-        return res.status(400).json({ error: "Reward already processed" });
+      // Allow retry for pending, processing, or failed rewards
+      if (reward.status === 'confirmed') {
+        return res.status(400).json({ error: "Reward already claimed" });
       }
       
       // Check if paymaster is configured
