@@ -161,11 +161,11 @@ export async function submitTransferERC20(
     // Get nonce using raw RPC call
     const nonce = await getRawNonce(walletAddress);
     
-    // Get current network gas price with conservative multiplier
-    // Paymaster has limited KAS (~0.34), so we use 1.25x to stay under budget
-    // 2001 gwei base * 1.25 = ~2500 gwei * 100k gas = 0.25 KAS per tx
+    // Get current network gas price with 3x multiplier for reliable confirmation
+    // Base is ~2000 gwei, so 3x = ~6000 gwei * 100k gas = ~0.6 KAS per tx
+    // Ensure paymaster wallet has sufficient KAS for gas
     const networkGasPrice = await getNetworkGasPrice();
-    const gasPrice = (networkGasPrice * 125n) / 100n; // 1.25x multiplier
+    const gasPrice = networkGasPrice * 3n; // 3x multiplier for reliability
     console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei, nonce: ${nonce}`);
     
     // Encode the transfer function call
