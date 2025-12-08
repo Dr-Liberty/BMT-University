@@ -12,7 +12,7 @@ export interface RewardTransaction {
   courseName?: string;
   amount: number;
   txHash?: string;
-  status: 'confirmed' | 'pending' | 'failed';
+  status: 'confirmed' | 'pending' | 'processing' | 'failed';
   date: string;
 }
 
@@ -42,10 +42,17 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
       return res.json();
     },
     onSuccess: (data) => {
-      toast({
-        title: 'Reward Claimed!',
-        description: `Successfully claimed ${data.amount?.toLocaleString() || 0} $BMT`,
-      });
+      if (data.status === 'processing') {
+        toast({
+          title: 'Transaction Submitted!',
+          description: data.message || 'Confirming on blockchain...',
+        });
+      } else {
+        toast({
+          title: 'Reward Claimed!',
+          description: `Successfully claimed ${data.amount?.toLocaleString() || 0} $BMT`,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
     },
     onError: (error) => {
@@ -88,6 +95,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
             {transactions.map((tx) => {
               const Icon = typeIcons[tx.type];
               const isPending = tx.status === 'pending';
+              const isProcessing = tx.status === 'processing';
               const isClaiming = claimMutation.isPending && claimMutation.variables === tx.id;
               
               return (
@@ -111,15 +119,19 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
                             ? 'text-kaspa-green border-kaspa-green/30' 
                             : tx.status === 'pending'
                               ? 'text-bmt-orange border-bmt-orange/30'
-                              : 'text-destructive border-destructive/30'
+                              : tx.status === 'processing'
+                                ? 'text-kaspa-cyan border-kaspa-cyan/30'
+                                : 'text-destructive border-destructive/30'
                         }
                       >
                         {tx.status === 'confirmed' ? (
                           <CheckCircle2 className="w-3 h-3 mr-1" />
                         ) : tx.status === 'pending' ? (
                           <Clock className="w-3 h-3 mr-1" />
+                        ) : tx.status === 'processing' ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                         ) : null}
-                        {tx.status}
+                        {tx.status === 'processing' ? 'confirming' : tx.status}
                       </Badge>
                     </div>
                     {tx.courseName && (
@@ -174,6 +186,12 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
                           </>
                         )}
                       </Button>
+                    )}
+                    {isProcessing && (
+                      <div className="text-xs text-kaspa-cyan flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Confirming...
+                      </div>
                     )}
                   </div>
                 </div>
