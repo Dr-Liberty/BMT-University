@@ -46,7 +46,15 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 ### Security & Performance
 
 *   **Authentication Security**: Proper ECDSA signature verification using ethers.verifyMessage to validate wallet signatures.
-*   **Rate Limiting**: Auth endpoints limited to 10 requests per 15 minutes per IP address.
+*   **Comprehensive Rate Limiting**: 
+    - Auth endpoints: 10 requests per 15 minutes per IP
+    - Quiz submission: 5 per minute with 5-second per-user throttle
+    - Rewards: 10 per minute, claims throttled to 1 per 10 seconds
+    - Referrals: 20 per minute, apply limited to 3 per minute with 60-second throttle
+*   **Anti-DDoS Protection**: Per-user submission throttling prevents rapid-fire attacks.
+*   **Request Deduplication**: 10-15 second windows prevent replay attacks on sensitive endpoints.
+*   **Error Sanitization**: Production mode hides internal error details from responses.
+*   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 2 wallets per device.
 *   **API Pagination**: Courses API supports limit/offset pagination (max 100 per page).
 *   **Frontend Caching**: React Query configured with 2-minute staleTime, 10-minute gcTime, and background refetch on window focus.
 
