@@ -21,21 +21,36 @@ import {
   getKaspacomTokenData
 } from "./kasplex";
 
-// Rate limiting for auth endpoints
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per 15 minutes per IP
+// ============ COMPREHENSIVE RATE LIMITING & SECURITY ============
 
-function checkRateLimit(ip: string): boolean {
+// Rate limit configurations for different endpoint types
+const RATE_LIMITS = {
+  auth: { window: 15 * 60 * 1000, maxRequests: 10 },          // 10 per 15 min
+  quiz: { window: 60 * 1000, maxRequests: 5 },                // 5 per minute
+  quizSubmit: { window: 5 * 1000, maxRequests: 1 },           // 1 per 5 seconds (per user)
+  rewards: { window: 60 * 1000, maxRequests: 10 },            // 10 per minute
+  rewardClaim: { window: 10 * 1000, maxRequests: 1 },         // 1 per 10 seconds
+  referrals: { window: 60 * 1000, maxRequests: 20 },          // 20 per minute
+  referralApply: { window: 60 * 1000, maxRequests: 3 },       // 3 per minute
+  general: { window: 60 * 1000, maxRequests: 60 },            // 60 per minute
+};
+
+// Rate limit stores
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const userThrottleStore = new Map<string, number>(); // user:action -> last action time
+const requestDedupeStore = new Map<string, number>(); // hash -> timestamp
+
+function checkRateLimit(key: string, limitType: keyof typeof RATE_LIMITS = 'general'): boolean {
   const now = Date.now();
-  const entry = rateLimitStore.get(ip);
+  const limit = RATE_LIMITS[limitType];
+  const entry = rateLimitStore.get(key);
   
   if (!entry || now > entry.resetTime) {
-    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    rateLimitStore.set(key, { count: 1, resetTime: now + limit.window });
     return true;
   }
   
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+  if (entry.count >= limit.maxRequests) {
     return false;
   }
   
@@ -43,15 +58,105 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-// Clean up old rate limit entries periodically
+// Per-user action throttling (e.g., 1 quiz submit per 5 seconds per user)
+function checkUserThrottle(userId: number, action: string, minIntervalMs: number): boolean {
+  const key = `${userId}:${action}`;
+  const now = Date.now();
+  const lastAction = userThrottleStore.get(key);
+  
+  if (lastAction && now - lastAction < minIntervalMs) {
+    return false;
+  }
+  
+  userThrottleStore.set(key, now);
+  return true;
+}
+
+// Request deduplication (prevent replay attacks within time window)
+function isDuplicateRequest(hash: string, windowMs: number = 5000): boolean {
+  const now = Date.now();
+  const lastRequest = requestDedupeStore.get(hash);
+  
+  if (lastRequest && now - lastRequest < windowMs) {
+    return true;
+  }
+  
+  requestDedupeStore.set(hash, now);
+  return false;
+}
+
+// Generate request hash for deduplication
+function generateRequestHash(userId: number, action: string, ...params: any[]): string {
+  return `${userId}:${action}:${params.join(':')}`;
+}
+
+// Clean up old entries periodically
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, entry] of rateLimitStore.entries()) {
+  
+  // Clean rate limit entries
+  for (const [key, entry] of rateLimitStore.entries()) {
     if (now > entry.resetTime) {
-      rateLimitStore.delete(ip);
+      rateLimitStore.delete(key);
     }
   }
-}, 60 * 1000);
+  
+  // Clean throttle entries older than 1 minute
+  for (const [key, timestamp] of userThrottleStore.entries()) {
+    if (now - timestamp > 60 * 1000) {
+      userThrottleStore.delete(key);
+    }
+  }
+  
+  // Clean dedup entries older than 30 seconds
+  for (const [key, timestamp] of requestDedupeStore.entries()) {
+    if (now - timestamp > 30 * 1000) {
+      requestDedupeStore.delete(key);
+    }
+  }
+}, 30 * 1000);
+
+// Rate limiting middleware factory
+function rateLimitMiddleware(limitType: keyof typeof RATE_LIMITS) {
+  return (req: any, res: any, next: any) => {
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${limitType}:${clientIp}`;
+    
+    if (!checkRateLimit(key, limitType)) {
+      const limit = RATE_LIMITS[limitType];
+      return res.status(429).json({ 
+        error: "Too many requests. Please slow down.",
+        retryAfter: Math.ceil(limit.window / 1000)
+      });
+    }
+    next();
+  };
+}
+
+// User throttle middleware factory (requires authMiddleware to run first)
+function userThrottleMiddleware(action: string, minIntervalMs: number) {
+  return (req: any, res: any, next: any) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    if (!checkUserThrottle(req.user.id, action, minIntervalMs)) {
+      return res.status(429).json({ 
+        error: "Please wait before trying again.",
+        retryAfter: Math.ceil(minIntervalMs / 1000)
+      });
+    }
+    next();
+  };
+}
+
+// Sanitize error for production (remove stack traces and internal details)
+function sanitizeError(error: any): string {
+  if (process.env.NODE_ENV === 'production') {
+    return 'An error occurred. Please try again.';
+  }
+  return error?.message || 'Unknown error';
+}
 
 // Verify EVM signature (for Kasplex L2 which is EVM-compatible)
 function verifySignature(message: string, signature: string, expectedAddress: string): boolean {
@@ -1070,8 +1175,25 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/quizzes/:quizId/submit", authMiddleware, async (req: any, res) => {
+  app.post("/api/quizzes/:quizId/submit", rateLimitMiddleware('quizSubmit'), authMiddleware, async (req: any, res) => {
     try {
+      // ============ SECURITY: Per-user throttle (1 submission per 5 seconds) ============
+      if (!checkUserThrottle(req.user.id, 'quiz_submit', 5000)) {
+        return res.status(429).json({ 
+          error: "Please wait a few seconds before submitting again.",
+          retryAfter: 5
+        });
+      }
+      
+      // ============ SECURITY: Request deduplication ============
+      const dedupeHash = generateRequestHash(req.user.id, 'quiz_submit', req.params.quizId, JSON.stringify(req.body.answers || {}));
+      if (isDuplicateRequest(dedupeHash, 10000)) {
+        return res.status(429).json({ 
+          error: "Duplicate submission detected. Please wait.",
+          retryAfter: 10
+        });
+      }
+      
       const quiz = await storage.getQuiz(req.params.quizId);
       if (!quiz) {
         return res.status(404).json({ error: "Quiz not found" });
@@ -1476,20 +1598,37 @@ export async function registerRoutes(
   });
 
   // ============ REWARDS ============
-  app.get("/api/rewards", authMiddleware, async (req: any, res) => {
+  app.get("/api/rewards", rateLimitMiddleware('rewards'), authMiddleware, async (req: any, res) => {
     try {
       const rewards = await storage.getRewardsByUser(req.user.id);
       res.json(rewards);
     } catch (error) {
       console.error("Error fetching rewards:", error);
-      res.status(500).json({ error: "Failed to fetch rewards" });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   });
 
-  app.post("/api/rewards/:rewardId/claim", authMiddleware, async (req: any, res) => {
+  app.post("/api/rewards/:rewardId/claim", rateLimitMiddleware('rewardClaim'), authMiddleware, async (req: any, res) => {
     const rewardId = req.params.rewardId;
     
     try {
+      // ============ SECURITY: Per-user throttle for claims ============
+      if (!checkUserThrottle(req.user.id, 'reward_claim', 10000)) {
+        return res.status(429).json({ 
+          error: "Please wait before claiming another reward.",
+          retryAfter: 10
+        });
+      }
+      
+      // ============ SECURITY: Deduplication for claims ============
+      const dedupeHash = generateRequestHash(req.user.id, 'reward_claim', rewardId);
+      if (isDuplicateRequest(dedupeHash, 15000)) {
+        return res.status(429).json({ 
+          error: "Claim already processing. Please wait.",
+          retryAfter: 15
+        });
+      }
+      
       const rewards = await storage.getRewardsByUser(req.user.id);
       const reward = rewards.find(r => r.id === rewardId);
       
@@ -2371,7 +2510,7 @@ export async function registerRoutes(
   });
   
   // Get or create user's referral code
-  app.get("/api/referrals/my-code", authMiddleware, async (req: any, res) => {
+  app.get("/api/referrals/my-code", rateLimitMiddleware('referrals'), authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.id;
       let referralCode = await storage.getReferralCode(userId);
@@ -2414,19 +2553,19 @@ export async function registerRoutes(
   });
   
   // Get user's referral stats
-  app.get("/api/referrals/stats", authMiddleware, async (req: any, res) => {
+  app.get("/api/referrals/stats", rateLimitMiddleware('referrals'), authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const stats = await storage.getReferralStats(userId);
       res.json(stats);
     } catch (error) {
       console.error("Error fetching referral stats:", error);
-      res.status(500).json({ error: "Failed to fetch referral stats" });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   });
   
   // Get the referral record for current user (if they were referred)
-  app.get("/api/referrals/my-referrer", authMiddleware, async (req: any, res) => {
+  app.get("/api/referrals/my-referrer", rateLimitMiddleware('referrals'), authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const referral = await storage.getReferralByReferredUser(userId);
@@ -2451,7 +2590,7 @@ export async function registerRoutes(
   });
   
   // Get user's referrals list
-  app.get("/api/referrals/list", authMiddleware, async (req: any, res) => {
+  app.get("/api/referrals/list", rateLimitMiddleware('referrals'), authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const referralsList = await storage.getReferralsByReferrer(userId);
@@ -2513,10 +2652,27 @@ export async function registerRoutes(
   });
   
   // Apply a referral code to the current user
-  app.post("/api/referrals/apply", authMiddleware, async (req: any, res) => {
+  app.post("/api/referrals/apply", rateLimitMiddleware('referralApply'), authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const { code } = req.body;
+      
+      // ============ SECURITY: Per-user throttle for referral applications ============
+      if (!checkUserThrottle(req.user.id, 'referral_apply', 60000)) {
+        return res.status(429).json({ 
+          error: "Please wait before trying to apply another referral code.",
+          retryAfter: 60
+        });
+      }
+      
+      // ============ SECURITY: Deduplication ============
+      const dedupeHash = generateRequestHash(req.user.id, 'referral_apply', code);
+      if (isDuplicateRequest(dedupeHash, 10000)) {
+        return res.status(429).json({ 
+          error: "Request already processing. Please wait.",
+          retryAfter: 10
+        });
+      }
       
       if (!code) {
         return res.status(400).json({ error: "Referral code required" });
