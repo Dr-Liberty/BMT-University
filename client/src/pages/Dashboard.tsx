@@ -10,7 +10,7 @@ import StatsCard from '@/components/StatsCard';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import RewardHistory, { RewardTransaction } from '@/components/RewardHistory';
 import CertificateModal, { Certificate } from '@/components/CertificateModal';
-import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw, Users, Share2, Copy, Check, Gift, PlusCircle } from 'lucide-react';
+import { BookOpen, Award, Coins, Trophy, GraduationCap, Clock, Loader2, Wallet, AlertCircle, RefreshCw, Users, Share2, Copy, Check, Gift, PlusCircle, RotateCcw } from 'lucide-react';
 import type { Course, Enrollment, Reward, Certificate as CertificateType, ReferralCode, Referral } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -44,6 +44,8 @@ interface ReferralWithUser extends Referral {
 interface EnrollmentWithCourse extends Enrollment {
   course?: Course;
   quizPassed?: boolean;
+  hasFailedAttempt?: boolean;
+  failedAttemptCount?: number;
 }
 
 interface CertificateWithCourse extends CertificateType {
@@ -67,6 +69,8 @@ function mapEnrollmentToDisplay(enrollment: EnrollmentWithCourse): CourseDisplay
     bmtReward: course.bmtReward,
     progress: Number(enrollment.progress ?? 0),
     quizPassed: enrollment.quizPassed,
+    hasFailedAttempt: enrollment.hasFailedAttempt,
+    failedAttemptCount: enrollment.failedAttemptCount,
   };
 }
 
@@ -209,7 +213,8 @@ export default function Dashboard() {
     .filter((c): c is CourseDisplay => c !== null);
 
   const completedCourses = enrolledCourses.filter(c => c.quizPassed === true || Number(c.progress ?? 0) >= 100);
-  const inProgressCourses = enrolledCourses.filter(c => c.quizPassed !== true && Number(c.progress ?? 0) < 100);
+  const needsRetryCourses = enrolledCourses.filter(c => c.hasFailedAttempt === true && c.quizPassed !== true);
+  const inProgressCourses = enrolledCourses.filter(c => c.quizPassed !== true && Number(c.progress ?? 0) < 100 && !c.hasFailedAttempt);
   const totalEarned = rewards.reduce((sum, r) => sum + r.amount, 0);
 
   const rewardTransactions: RewardTransaction[] = rewards.map(r => mapRewardToTransaction(r, allCourses));
@@ -363,6 +368,29 @@ export default function Dashboard() {
           </div>
 
           <TabsContent value="courses" className="space-y-6">
+            {needsRetryCourses.length > 0 && (
+              <div>
+                <h2 className="font-heading font-semibold text-xl text-white mb-4 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-bmt-orange" />
+                  Needs Retry
+                  <Badge variant="secondary" className="ml-2">{needsRetryCourses.length}</Badge>
+                </h2>
+                <p className="text-muted-foreground text-sm mb-4">
+                  These courses have quiz attempts that didn't pass. Review the material and try again!
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {needsRetryCourses.map((course) => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      enrolled
+                      onContinue={handleContinue}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {inProgressCourses.length > 0 && (
               <div>
                 <h2 className="font-heading font-semibold text-xl text-white mb-4 flex items-center gap-2">

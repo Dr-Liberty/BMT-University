@@ -1337,13 +1337,20 @@ export async function registerRoutes(
           
           // Check if user has passed the quiz for this course
           let quizPassed = false;
+          let hasFailedAttempt = false;
+          let failedAttemptCount = 0;
           const quiz = await storage.getQuizByCourse(enrollment.courseId);
           if (quiz) {
             const attempts = await storage.getQuizAttempts(req.user.id, quiz.id);
             quizPassed = attempts.some(a => a.passed);
+            // If not passed but has attempts, user has failed
+            if (!quizPassed && attempts.length > 0) {
+              hasFailedAttempt = true;
+              failedAttemptCount = attempts.filter(a => !a.passed).length;
+            }
           }
           
-          return { ...enrollment, course, quizPassed };
+          return { ...enrollment, course, quizPassed, hasFailedAttempt, failedAttemptCount };
         })
       );
       

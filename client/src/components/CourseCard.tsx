@@ -19,6 +19,8 @@ export interface CourseDisplay {
   bmtReward: number;
   progress?: number;
   quizPassed?: boolean;
+  hasFailedAttempt?: boolean;
+  failedAttemptCount?: number;
 }
 
 interface CourseCardProps {
