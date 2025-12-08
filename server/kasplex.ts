@@ -89,8 +89,11 @@ export interface TransferResult {
 }
 
 // Helper to get nonce via raw RPC call (Kasplex compatibility)
-async function getRawNonce(walletAddress: string): Promise<number> {
+// Uses 'pending' to include unconfirmed transactions and avoid nonce collisions
+async function getRawNonce(walletAddress: string, usePending: boolean = true): Promise<number> {
   try {
+    // Try 'pending' first to include unconfirmed transactions
+    const blockTag = usePending ? 'pending' : 'latest';
     const response = await fetch(KASPLEX_EVM_RPC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,7 +101,7 @@ async function getRawNonce(walletAddress: string): Promise<number> {
         jsonrpc: '2.0',
         id: 1,
         method: 'eth_getTransactionCount',
-        params: [walletAddress, 'latest'],
+        params: [walletAddress, blockTag],
       }),
     });
     
@@ -107,27 +110,19 @@ async function getRawNonce(walletAddress: string): Promise<number> {
       return parseInt(data.result, 16);
     }
     
-    // If standard method fails, try without block tag
-    const response2 = await fetch(KASPLEX_EVM_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_getTransactionCount',
-        params: [walletAddress],
-      }),
-    });
-    
-    const data2 = await response2.json();
-    if (data2.result) {
-      return parseInt(data2.result, 16);
+    // Fallback to 'latest' if 'pending' fails
+    if (usePending) {
+      return getRawNonce(walletAddress, false);
     }
     
     console.warn('Could not get nonce from RPC, defaulting to 0');
     return 0;
   } catch (error) {
     console.error('Failed to get nonce:', error);
+    // Fallback to 'latest' on error
+    if (usePending) {
+      return getRawNonce(walletAddress, false);
+    }
     return 0;
   }
 }
@@ -158,6 +153,137 @@ async function getNetworkGasPrice(): Promise<bigint> {
   }
 }
 
+// Internal function to attempt a single transfer
+async function attemptTransfer(
+  wallet: ethers.Wallet,
+  tokenContract: string,
+  toAddress: string,
+  amount: string,
+  decimals: number,
+  gasMultiplier: bigint,
+  nonceOverride?: number
+): Promise<TransferResult & { shouldRetry?: boolean }> {
+  const walletAddress = wallet.address;
+  const amountBigInt = BigInt(amount);
+  
+  // Get nonce using raw RPC call (Kasplex compatibility)
+  const nonce = nonceOverride ?? await getRawNonce(walletAddress);
+  
+  // Get current network gas price (Kasplex uses ~2000 gwei)
+  const networkGasPrice = await getNetworkGasPrice();
+  const gasPrice = networkGasPrice * gasMultiplier;
+  console.log(`  Attempt with ${gasMultiplier}x gas: ${Number(gasPrice) / 1e9} gwei, nonce: ${nonce}`);
+  
+  // Encode the transfer function call
+  const iface = new ethers.Interface(ERC20_ABI);
+  const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
+  
+  // Use EIP-1559 transaction (type 2) - works on Kasplex L2
+  const tx = {
+    to: tokenContract,
+    data: data,
+    nonce: nonce,
+    gasLimit: 100000n, // ERC-20 transfers typically use 50-70k gas
+    maxFeePerGas: gasPrice,
+    maxPriorityFeePerGas: gasPrice / 2n,
+    chainId: KASPLEX_CHAIN_ID,
+    type: 2, // EIP-1559 transaction
+  };
+  
+  // Sign transaction
+  const signedTx = await wallet.signTransaction(tx);
+  
+  // Send raw transaction via RPC
+  const sendResponse = await fetch(KASPLEX_EVM_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_sendRawTransaction',
+      params: [signedTx],
+    }),
+  });
+  
+  const sendData = await sendResponse.json();
+  
+  if (sendData.error) {
+    console.error('RPC error:', sendData.error);
+    const errorMsg = sendData.error.message || '';
+    // Check if we should retry with higher gas
+    const shouldRetry = errorMsg.includes('underpriced') || 
+                        errorMsg.includes('gas') ||
+                        errorMsg.includes('nonce') ||
+                        errorMsg.includes('replacement');
+    return {
+      success: false,
+      error: sendData.error.message || 'Transaction rejected by network',
+      shouldRetry,
+    };
+  }
+  
+  const txHash = sendData.result;
+  console.log(`Transaction submitted: ${txHash}`);
+  
+  // Wait for confirmation (30 seconds per attempt, not 60)
+  let receipt = null;
+  let attempts = 0;
+  const maxAttempts = 30;
+  
+  while (!receipt && attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    attempts++;
+    
+    const receiptResponse = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+      }),
+    });
+    
+    const receiptData = await receiptResponse.json();
+    if (receiptData.result) {
+      receipt = receiptData.result;
+    }
+  }
+  
+  if (receipt) {
+    const blockNumber = parseInt(receipt.blockNumber, 16);
+    const gasUsed = parseInt(receipt.gasUsed, 16).toString();
+    console.log(`Transaction confirmed in block ${blockNumber}`);
+    console.log(`Gas used: ${gasUsed}`);
+    
+    // Check if transaction was successful
+    if (receipt.status === '0x0') {
+      return {
+        success: false,
+        error: 'Transaction reverted on chain',
+        shouldRetry: false,
+      };
+    }
+    
+    return {
+      success: true,
+      txHash: txHash,
+      gasUsed: gasUsed,
+      blockNumber: blockNumber,
+    };
+  } else {
+    // Transaction submitted but NOT confirmed - may retry with higher gas
+    console.error(`Transaction NOT confirmed after ${maxAttempts} seconds: ${txHash}`);
+    return {
+      success: false,
+      error: 'Transaction not confirmed within timeout',
+      txHash: txHash,
+      shouldRetry: true,
+    };
+  }
+}
+
 export async function transferERC20(
   tokenContract: string,
   toAddress: string,
@@ -174,11 +300,8 @@ export async function transferERC20(
   }
 
   try {
-    // Create wallet without provider first to sign transaction manually
     const wallet = new ethers.Wallet(privateKey);
     const walletAddress = wallet.address;
-    
-    const amountBigInt = BigInt(amount);
     
     console.log(`Initiating ERC-20 transfer:`);
     console.log(`  Token: ${tokenContract}`);
@@ -186,116 +309,39 @@ export async function transferERC20(
     console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
     console.log(`  From: ${walletAddress}`);
     
-    // Get nonce using raw RPC call (Kasplex compatibility)
-    const nonce = await getRawNonce(walletAddress);
-    console.log(`  Nonce: ${nonce}`);
+    // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
+    const gasMultipliers = [3n, 5n, 8n, 12n];
     
-    // Get current network gas price (Kasplex uses ~2000 gwei)
-    const networkGasPrice = await getNetworkGasPrice();
-    const gasPrice = networkGasPrice * 2n; // Use 2x for faster confirmation
-    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei`);
+    for (let i = 0; i < gasMultipliers.length; i++) {
+      const result = await attemptTransfer(
+        wallet,
+        tokenContract,
+        toAddress,
+        amount,
+        decimals,
+        gasMultipliers[i]
+      );
+      
+      if (result.success) {
+        return result;
+      }
+      
+      // Don't retry if it's a permanent failure
+      if (!result.shouldRetry) {
+        return result;
+      }
+      
+      // Wait before retry
+      if (i < gasMultipliers.length - 1) {
+        console.log(`Retrying with higher gas (attempt ${i + 2}/${gasMultipliers.length})...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
     
-    // Encode the transfer function call
-    const iface = new ethers.Interface(ERC20_ABI);
-    const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
-    
-    // Use EIP-1559 transaction (type 2) - works on Kasplex L2
-    const tx = {
-      to: tokenContract,
-      data: data,
-      nonce: nonce,
-      gasLimit: 100000n, // ERC-20 transfers typically use 50-70k gas
-      maxFeePerGas: gasPrice,
-      maxPriorityFeePerGas: gasPrice / 2n,
-      chainId: KASPLEX_CHAIN_ID,
-      type: 2, // EIP-1559 transaction
+    return {
+      success: false,
+      error: 'Transaction failed after multiple retry attempts. The network may be congested.',
     };
-    
-    // Sign transaction
-    const signedTx = await wallet.signTransaction(tx);
-    console.log(`Transaction signed (EIP-1559)`);
-    
-    // Send raw transaction via RPC
-    const sendResponse = await fetch(KASPLEX_EVM_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_sendRawTransaction',
-        params: [signedTx],
-      }),
-    });
-    
-    const sendData = await sendResponse.json();
-    
-    if (sendData.error) {
-      console.error('RPC error:', sendData.error);
-      return {
-        success: false,
-        error: sendData.error.message || 'Transaction rejected by network',
-      };
-    }
-    
-    const txHash = sendData.result;
-    console.log(`Transaction submitted: ${txHash}`);
-    
-    // Wait for confirmation
-    let receipt = null;
-    let attempts = 0;
-    const maxAttempts = 60; // 60 seconds timeout
-    
-    while (!receipt && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      attempts++;
-      
-      const receiptResponse = await fetch(KASPLEX_EVM_RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'eth_getTransactionReceipt',
-          params: [txHash],
-        }),
-      });
-      
-      const receiptData = await receiptResponse.json();
-      if (receiptData.result) {
-        receipt = receiptData.result;
-      }
-    }
-    
-    if (receipt) {
-      const blockNumber = parseInt(receipt.blockNumber, 16);
-      const gasUsed = parseInt(receipt.gasUsed, 16).toString();
-      console.log(`Transaction confirmed in block ${blockNumber}`);
-      console.log(`Gas used: ${gasUsed}`);
-      
-      // Check if transaction was successful
-      if (receipt.status === '0x0') {
-        return {
-          success: false,
-          error: 'Transaction reverted on chain',
-        };
-      }
-      
-      return {
-        success: true,
-        txHash: txHash,
-        gasUsed: gasUsed,
-        blockNumber: blockNumber,
-      };
-    } else {
-      // Transaction submitted but NOT confirmed - this is a FAILURE
-      // The transaction may have been rejected or the RPC didn't return it
-      console.error(`Transaction NOT confirmed after ${maxAttempts} seconds: ${txHash}`);
-      return {
-        success: false,
-        error: 'Transaction not confirmed on chain after 60 seconds. It may have been rejected.',
-        txHash: txHash, // Include hash for debugging
-      };
-    }
   } catch (error: any) {
     console.error('ERC-20 transfer failed:', error);
     
