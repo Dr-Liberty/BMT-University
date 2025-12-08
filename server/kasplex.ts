@@ -225,10 +225,10 @@ async function attemptTransfer(
   const txHash = sendData.result;
   console.log(`Transaction submitted: ${txHash}`);
   
-  // Wait for confirmation (30 seconds per attempt, not 60)
+  // Wait for confirmation (15 seconds per attempt to fit within browser timeout)
   let receipt = null;
   let attempts = 0;
-  const maxAttempts = 30;
+  const maxAttempts = 15;
   
   while (!receipt && attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -310,7 +310,8 @@ export async function transferERC20(
     console.log(`  From: ${walletAddress}`);
     
     // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
-    const gasMultipliers = [3n, 5n, 8n, 12n];
+    // Limited to 3 attempts to fit within browser timeout (~45s total)
+    const gasMultipliers = [3n, 6n, 10n];
     
     for (let i = 0; i < gasMultipliers.length; i++) {
       const result = await attemptTransfer(
@@ -331,10 +332,10 @@ export async function transferERC20(
         return result;
       }
       
-      // Wait before retry
+      // Brief wait before retry
       if (i < gasMultipliers.length - 1) {
         console.log(`Retrying with higher gas (attempt ${i + 2}/${gasMultipliers.length})...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
