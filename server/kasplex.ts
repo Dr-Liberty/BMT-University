@@ -127,6 +127,124 @@ async function getRawNonce(walletAddress: string, usePending: boolean = true): P
   }
 }
 
+// Broadcast-only transfer result (no confirmation wait)
+export interface BroadcastResult {
+  success: boolean;
+  txHash?: string;
+  error?: string;
+}
+
+// Submit transaction without waiting for confirmation (fast, for async flows)
+export async function submitTransferERC20(
+  tokenContract: string,
+  toAddress: string,
+  amount: string,
+  decimals: number = 18
+): Promise<BroadcastResult> {
+  const privateKey = getPaymasterPrivateKey();
+  
+  if (!privateKey) {
+    return { success: false, error: 'Paymaster private key not configured' };
+  }
+
+  try {
+    const wallet = new ethers.Wallet(privateKey);
+    const walletAddress = wallet.address;
+    const amountBigInt = BigInt(amount);
+    
+    console.log(`[FastSubmit] Initiating ERC-20 transfer:`);
+    console.log(`  Token: ${tokenContract}`);
+    console.log(`  To: ${toAddress}`);
+    console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
+    console.log(`  From: ${walletAddress}`);
+    
+    // Get nonce using raw RPC call
+    const nonce = await getRawNonce(walletAddress);
+    
+    // Get current network gas price with 5x multiplier for reliability
+    const networkGasPrice = await getNetworkGasPrice();
+    const gasPrice = networkGasPrice * 5n;
+    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei, nonce: ${nonce}`);
+    
+    // Encode the transfer function call
+    const iface = new ethers.Interface(ERC20_ABI);
+    const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
+    
+    // Use EIP-1559 transaction
+    const tx = {
+      to: tokenContract,
+      data: data,
+      nonce: nonce,
+      gasLimit: 100000n,
+      maxFeePerGas: gasPrice,
+      maxPriorityFeePerGas: gasPrice / 2n,
+      chainId: KASPLEX_CHAIN_ID,
+      type: 2,
+    };
+    
+    // Sign and broadcast
+    const signedTx = await wallet.signTransaction(tx);
+    
+    const sendResponse = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_sendRawTransaction',
+        params: [signedTx],
+      }),
+    });
+    
+    const sendData = await sendResponse.json();
+    
+    if (sendData.error) {
+      console.error('[FastSubmit] RPC error:', sendData.error);
+      return { success: false, error: sendData.error.message || 'Transaction rejected' };
+    }
+    
+    const txHash = sendData.result;
+    console.log(`[FastSubmit] Transaction broadcast: ${txHash}`);
+    
+    return { success: true, txHash };
+  } catch (error: any) {
+    console.error('[FastSubmit] Error:', error);
+    return { success: false, error: error.message || 'Broadcast failed' };
+  }
+}
+
+// Check transaction confirmation status
+export async function checkTransactionStatus(txHash: string): Promise<{ confirmed: boolean; success?: boolean; blockNumber?: number }> {
+  try {
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (!data.result) {
+      return { confirmed: false };
+    }
+    
+    const receipt = data.result;
+    return {
+      confirmed: true,
+      success: receipt.status !== '0x0',
+      blockNumber: parseInt(receipt.blockNumber, 16),
+    };
+  } catch (error) {
+    console.error('Error checking transaction:', error);
+    return { confirmed: false };
+  }
+}
+
 // Get current network gas price
 async function getNetworkGasPrice(): Promise<bigint> {
   try {

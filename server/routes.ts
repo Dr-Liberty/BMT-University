@@ -1658,9 +1658,6 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No wallet address on your account" });
       }
       
-      // Mark as processing to prevent double claims
-      await storage.updateReward(rewardId, { status: 'processing' });
-      
       // Get token decimals and convert amount (BMT uses 18 decimals)
       const tokenInfo = await getERC20TokenInfo(config.tokenContractAddress);
       const decimals = tokenInfo?.decimals || 18;
@@ -1668,70 +1665,83 @@ export async function registerRoutes(
       
       console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT (${amountInWei} wei, ${decimals} decimals) to ${user.walletAddress}`);
       
-      // Execute the REAL blockchain transfer
-      let result;
-      try {
-        result = await transferERC20(
-          config.tokenContractAddress,
-          user.walletAddress,
-          amountInWei,
-          decimals
-        );
-      } catch (transferError: any) {
-        console.error(`[Claim] Transfer exception:`, transferError);
-        // Revert to pending on exception so user can retry
-        await storage.updateReward(rewardId, { status: 'pending' });
-        return res.status(500).json({ 
-          error: "Blockchain transaction failed", 
-          details: transferError.message || "Unknown error during transfer"
-        });
-      }
+      // Use fast submit (broadcast only, no wait for confirmation)
+      const { submitTransferERC20, checkTransactionStatus } = await import('./kasplex');
       
-      if (result.success && result.txHash) {
-        // Update reward with real transaction hash
-        const updated = await storage.updateReward(rewardId, {
-          status: 'confirmed',
-          txHash: result.txHash,
-          processedAt: new Date(),
-        });
-        
-        // Also update any associated payout transaction
-        const payouts = await storage.getPayoutsByReward(rewardId);
-        for (const payout of payouts) {
-          await storage.updatePayoutTransaction(payout.id, {
-            status: 'completed',
-            txHash: result.txHash,
-            processedAt: new Date(),
-          });
-        }
-        
-        console.log(`[Claim] SUCCESS: ${reward.amount} BMT sent to ${user.walletAddress}, txHash: ${result.txHash}`);
-        
-        res.json({
-          ...updated,
-          message: `Successfully claimed ${reward.amount} $BMT!`,
-          txHash: result.txHash,
-          blockNumber: result.blockNumber,
-        });
-      } else {
-        // Revert to pending on failure so user can retry
-        await storage.updateReward(rewardId, { status: 'pending' });
-        
-        console.error(`[Claim] FAILED: ${result.error}`);
-        
-        res.status(500).json({ 
+      const result = await submitTransferERC20(
+        config.tokenContractAddress,
+        user.walletAddress,
+        amountInWei,
+        decimals
+      );
+      
+      if (!result.success || !result.txHash) {
+        console.error(`[Claim] Broadcast FAILED: ${result.error}`);
+        return res.status(500).json({ 
           error: "Blockchain transaction failed", 
           details: result.error 
         });
       }
+      
+      // Update reward with tx hash and mark as processing (confirmation pending)
+      await storage.updateReward(rewardId, {
+        status: 'processing',
+        txHash: result.txHash,
+      });
+      
+      console.log(`[Claim] Transaction broadcast: ${result.txHash}, starting background confirmation...`);
+      
+      // Return immediately with 202 Accepted - confirmation happens async
+      res.status(202).json({
+        id: rewardId,
+        status: 'processing',
+        message: `Transaction submitted! Confirming on blockchain...`,
+        txHash: result.txHash,
+      });
+      
+      // Background confirmation polling (non-blocking)
+      (async () => {
+        const maxPolls = 120; // 2 minutes max
+        for (let i = 0; i < maxPolls; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          try {
+            const status = await checkTransactionStatus(result.txHash!);
+            
+            if (status.confirmed) {
+              if (status.success) {
+                await storage.updateReward(rewardId, {
+                  status: 'confirmed',
+                  processedAt: new Date(),
+                });
+                
+                // Update associated payout transactions
+                const payouts = await storage.getPayoutsByReward(rewardId);
+                for (const payout of payouts) {
+                  await storage.updatePayoutTransaction(payout.id, {
+                    status: 'completed',
+                    txHash: result.txHash,
+                    processedAt: new Date(),
+                  });
+                }
+                
+                console.log(`[Claim] CONFIRMED: ${reward.amount} BMT to ${user.walletAddress}, block ${status.blockNumber}`);
+              } else {
+                await storage.updateReward(rewardId, { status: 'failed' });
+                console.error(`[Claim] Transaction reverted: ${result.txHash}`);
+              }
+              return;
+            }
+          } catch (pollError) {
+            console.error(`[Claim] Poll error:`, pollError);
+          }
+        }
+        
+        // Timeout - leave as processing, user can check status later
+        console.warn(`[Claim] Confirmation timeout for ${result.txHash}`);
+      })();
     } catch (error: any) {
       console.error("Error claiming reward:", error);
-      // Always try to revert to pending on any error
-      try {
-        await storage.updateReward(rewardId, { status: 'pending' });
-      } catch (revertError) {
-        console.error("Failed to revert reward status:", revertError);
-      }
       res.status(500).json({ error: "Failed to claim reward", details: error.message });
     }
   });
