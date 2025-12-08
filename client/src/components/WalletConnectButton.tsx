@@ -10,6 +10,24 @@ import { kasplexL2 } from '@/lib/wagmi';
 
 const DEMO_WALLET_ADDRESS = '0xdead000000000000000000000000000000000001';
 
+function getDeviceFingerprint(): string {
+  const screenResolution = `${window.screen.width}x${window.screen.height}`;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const language = navigator.language;
+  const platform = navigator.platform;
+  
+  const fingerprintData = `${navigator.userAgent}|${screenResolution}|${timezone}|${language}|${platform}`;
+  
+  let hash = 0;
+  for (let i = 0; i < fingerprintData.length; i++) {
+    const char = fingerprintData.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  return Math.abs(hash).toString(36).padStart(12, '0');
+}
+
 interface WalletConnectButtonProps {
   onConnect?: () => void;
   onDisconnect?: () => void;
@@ -98,18 +116,28 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
       const { nonce } = await nonceRes.json();
       const signature = `0xrainbow_${nonce.slice(0, 32)}`;
+      const fingerprintHash = getDeviceFingerprint();
 
       const verifyRes = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress, signature }),
+        body: JSON.stringify({ walletAddress, signature, fingerprintHash }),
       });
 
       if (!verifyRes.ok) {
         throw new Error('Failed to verify wallet');
       }
 
-      const { token } = await verifyRes.json();
+      const { token, farmingWarning } = await verifyRes.json();
+      
+      if (farmingWarning) {
+        toast({
+          title: farmingWarning.type === 'farming_blocked' ? 'Account Blocked' : 'Warning: Farming Detected',
+          description: farmingWarning.message,
+          variant: 'destructive',
+          duration: 15000,
+        });
+      }
 
       setAuthToken(token);
       setIsAuthenticated(true);
@@ -218,11 +246,12 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
       const { nonce } = await nonceRes.json();
       const signature = `0xdemo_${nonce}`;
+      const fingerprintHash = getDeviceFingerprint();
 
       const verifyRes = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS, signature, isDemo: true }),
+        body: JSON.stringify({ walletAddress: DEMO_WALLET_ADDRESS, signature, isDemo: true, fingerprintHash }),
       });
 
       if (!verifyRes.ok) {

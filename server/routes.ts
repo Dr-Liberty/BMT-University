@@ -196,12 +196,38 @@ export async function registerRoutes(
         });
       }
       
+      // Check if this device/IP has been used by other wallets (farming detection on login)
+      const { fingerprintHash } = req.body;
+      let farmingWarning = null;
+      
+      if (fingerprintHash) {
+        const existingFingerprints = await storage.getDeviceFingerprintsByHash(fingerprintHash);
+        const uniqueWallets = new Set(existingFingerprints.map(f => f.walletAddress.toLowerCase()));
+        
+        // Add current wallet to check
+        uniqueWallets.add(walletAddress.toLowerCase());
+        
+        // If this is the 2nd wallet from this device, show warning
+        if (uniqueWallets.size === 2) {
+          farmingWarning = {
+            type: 'farming_warning',
+            message: 'Warning: Multiple wallets detected from this device. Using multiple wallets to farm rewards is against our terms of service and may result in a permanent ban. If you believe this is an error, please contact support.',
+          };
+        } else if (uniqueWallets.size > 2) {
+          // 3+ wallets - this account is already flagged/blocked
+          farmingWarning = {
+            type: 'farming_blocked',
+            message: 'Your device has been flagged for using multiple wallets. Rewards are blocked. Contact support if you believe this is an error.',
+          };
+        }
+      }
+      
       // Create session with shorter expiry for security
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours (reduced from 7 days)
       await storage.createAuthSession(user.id, token, walletAddress, expiresAt);
       
-      res.json({ token, user });
+      res.json({ token, user, farmingWarning });
     } catch (error) {
       console.error("Error verifying auth:", error);
       res.status(500).json({ error: "Failed to verify authentication" });
@@ -1136,7 +1162,7 @@ export async function registerRoutes(
           ipAddress: clientIp,
           activityType: 'multiple_wallets_same_device',
           description: `Same device fingerprint used by ${uniqueWallets.size} different wallets`,
-          severity: uniqueWallets.size > 3 ? 'high' : 'medium',
+          severity: uniqueWallets.size >= 2 ? 'high' : 'medium',
           courseId: course.id,
           metadata: { wallets: Array.from(uniqueWallets) },
         });
