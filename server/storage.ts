@@ -18,6 +18,7 @@ import {
   type ReferralSettings, type UpdateReferralSettings,
   type ReferralCode, type InsertReferralCode,
   type Referral, type InsertReferral,
+  type WalletBlacklist, type KnownSinkAddress,
   users, courses, courseRatings, modules, lessons, lessonProgress,
   quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
@@ -25,6 +26,7 @@ import {
   paymasterConfig, payoutTransactions,
   deviceFingerprints, suspiciousActivity,
   referralSettings, referralCodes, referrals,
+  walletBlacklist, knownSinkAddresses,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -180,6 +182,15 @@ export interface IStorage {
   updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined>;
   getReferralStats(userId: string): Promise<{ totalReferrals: number; pendingReferrals: number; qualifiedReferrals: number; rewardedReferrals: number; totalBmtEarned: number }>;
   getAllReferrals(): Promise<Referral[]>;
+  
+  // Wallet blacklist methods (Anti-Sybil)
+  isWalletBlacklisted(walletAddress: string): Promise<{ isBlacklisted: boolean; reason?: string; severity?: string }>;
+  addToBlacklist(data: { walletAddress: string; reason: string; description?: string; severity?: string; linkedWallets?: string[]; totalDrained?: number; evidenceTxHashes?: string[]; flaggedBy?: string }): Promise<void>;
+  removeFromBlacklist(walletAddress: string): Promise<boolean>;
+  
+  // Known sink address methods
+  isKnownSinkAddress(address: string): Promise<{ isSink: boolean; label?: string; addressType?: string }>;
+  addKnownSinkAddress(data: { address: string; addressType: string; label?: string; isFlagged?: boolean }): Promise<void>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -1235,6 +1246,111 @@ export class DatabaseStorage implements IStorage {
 
   async getAllReferrals(): Promise<Referral[]> {
     return await db.select().from(referrals).orderBy(desc(referrals.createdAt));
+  }
+  
+  // ============ WALLET BLACKLIST METHODS ============
+  
+  async isWalletBlacklisted(walletAddress: string): Promise<{ isBlacklisted: boolean; reason?: string; severity?: string }> {
+    const normalizedAddress = walletAddress.toLowerCase();
+    const [entry] = await db.select()
+      .from(walletBlacklist)
+      .where(and(
+        eq(walletBlacklist.walletAddress, normalizedAddress),
+        eq(walletBlacklist.isActive, true)
+      ))
+      .limit(1);
+    
+    if (entry) {
+      return {
+        isBlacklisted: true,
+        reason: entry.reason,
+        severity: entry.severity,
+      };
+    }
+    return { isBlacklisted: false };
+  }
+  
+  async addToBlacklist(data: {
+    walletAddress: string;
+    reason: string;
+    description?: string;
+    severity?: string;
+    linkedWallets?: string[];
+    totalDrained?: number;
+    evidenceTxHashes?: string[];
+    flaggedBy?: string;
+  }): Promise<void> {
+    const normalizedAddress = data.walletAddress.toLowerCase();
+    await db.insert(walletBlacklist)
+      .values({
+        walletAddress: normalizedAddress,
+        reason: data.reason,
+        description: data.description,
+        severity: data.severity || 'blocked',
+        linkedWallets: data.linkedWallets || [],
+        totalDrained: data.totalDrained || 0,
+        evidenceTxHashes: data.evidenceTxHashes || [],
+        flaggedBy: data.flaggedBy || 'system',
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: walletBlacklist.walletAddress,
+        set: {
+          reason: data.reason,
+          description: data.description,
+          severity: data.severity || 'blocked',
+          linkedWallets: data.linkedWallets || [],
+          totalDrained: data.totalDrained || 0,
+          evidenceTxHashes: data.evidenceTxHashes || [],
+          flaggedBy: data.flaggedBy || 'system',
+          isActive: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+  
+  async removeFromBlacklist(walletAddress: string): Promise<boolean> {
+    const normalizedAddress = walletAddress.toLowerCase();
+    const result = await db.update(walletBlacklist)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(walletBlacklist.walletAddress, normalizedAddress));
+    return true;
+  }
+  
+  // ============ KNOWN SINK ADDRESS METHODS ============
+  
+  async isKnownSinkAddress(address: string): Promise<{ isSink: boolean; label?: string; addressType?: string }> {
+    const normalizedAddress = address.toLowerCase();
+    const [entry] = await db.select()
+      .from(knownSinkAddresses)
+      .where(eq(knownSinkAddresses.address, normalizedAddress))
+      .limit(1);
+    
+    if (entry) {
+      return {
+        isSink: true,
+        label: entry.label || undefined,
+        addressType: entry.addressType,
+      };
+    }
+    return { isSink: false };
+  }
+  
+  async addKnownSinkAddress(data: {
+    address: string;
+    addressType: string;
+    label?: string;
+    isFlagged?: boolean;
+  }): Promise<void> {
+    const normalizedAddress = data.address.toLowerCase();
+    await db.insert(knownSinkAddresses)
+      .values({
+        address: normalizedAddress,
+        addressType: data.addressType,
+        label: data.label,
+        isFlagged: data.isFlagged || false,
+      })
+      .onConflictDoNothing();
   }
 }
 

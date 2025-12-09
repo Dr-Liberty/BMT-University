@@ -1701,6 +1701,17 @@ export async function registerRoutes(
         });
       }
       
+      // ============ SECURITY: Check wallet blacklist (Anti-Sybil) ============
+      const blacklistCheck = await storage.isWalletBlacklisted(req.user.walletAddress);
+      if (blacklistCheck.isBlacklisted) {
+        console.log(`[Security] BLOCKED claim attempt from blacklisted wallet: ${req.user.walletAddress}, reason: ${blacklistCheck.reason}`);
+        return res.status(403).json({ 
+          error: "This wallet has been flagged for suspicious activity. If you believe this is an error, please contact support.",
+          blocked: true,
+          reason: blacklistCheck.reason
+        });
+      }
+      
       // ============ SECURITY: Verify wallet ownership via signature ============
       const { signature, timestamp } = req.body;
       
