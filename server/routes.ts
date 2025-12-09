@@ -454,6 +454,62 @@ export async function registerRoutes(
     }
   });
 
+  // ============ COURSE RATINGS ============
+  
+  // Get user's rating for a course
+  app.get("/api/courses/:courseId/rating/me", authMiddleware, async (req: any, res) => {
+    try {
+      const rating = await storage.getCourseRating(req.user.id, req.params.courseId);
+      res.json(rating || null);
+    } catch (error) {
+      console.error("Error fetching user rating:", error);
+      res.status(500).json({ error: "Failed to fetch rating" });
+    }
+  });
+
+  // Get all ratings for a course
+  app.get("/api/courses/:courseId/ratings", async (req, res) => {
+    try {
+      const ratings = await storage.getCourseRatings(req.params.courseId);
+      res.json(ratings);
+    } catch (error) {
+      console.error("Error fetching course ratings:", error);
+      res.status(500).json({ error: "Failed to fetch ratings" });
+    }
+  });
+
+  // Submit or update a rating (requires enrollment)
+  app.post("/api/courses/:courseId/rating", authMiddleware, async (req: any, res) => {
+    try {
+      const courseId = req.params.courseId;
+      const { rating, review } = req.body;
+      
+      // Validate rating
+      if (!rating || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5" });
+      }
+      
+      // Check if user is enrolled in the course
+      const enrollment = await storage.getEnrollment(req.user.id, courseId);
+      if (!enrollment) {
+        return res.status(403).json({ error: "You must be enrolled to rate this course" });
+      }
+      
+      // Create or update rating
+      const result = await storage.createOrUpdateCourseRating({
+        userId: req.user.id,
+        courseId,
+        rating: Math.round(rating),
+        review: review || null,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error submitting rating:", error);
+      res.status(500).json({ error: "Failed to submit rating" });
+    }
+  });
+
   // ============ MODULES ============
   app.get("/api/courses/:courseId/modules", async (req, res) => {
     try {
