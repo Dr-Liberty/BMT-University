@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Award, CheckCircle2, Clock, Loader2, Coins } from 'lucide-react';
+import { ExternalLink, Award, CheckCircle2, Clock, Loader2, Coins, AlertTriangle } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useAccount, useSignMessage } from 'wagmi';
+import { useState } from 'react';
 
 export interface RewardTransaction {
   id: string;
@@ -35,10 +37,19 @@ const typeIcons = {
 
 export default function RewardHistory({ transactions, maxHeight }: RewardHistoryProps) {
   const { toast } = useToast();
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [signingRewardId, setSigningRewardId] = useState<string | null>(null);
+  
+  // Check if using demo wallet
+  const isDemoWallet = address?.toLowerCase().startsWith('0xdead');
 
   const claimMutation = useMutation({
-    mutationFn: async (rewardId: string) => {
-      const res = await apiRequest('POST', `/api/rewards/${rewardId}/claim`);
+    mutationFn: async ({ rewardId, signature, timestamp }: { rewardId: string; signature: string; timestamp: string }) => {
+      const res = await apiRequest('POST', `/api/rewards/${rewardId}/claim`, {
+        signature,
+        timestamp,
+      });
       return res.json();
     },
     onSuccess: (data) => {
@@ -55,14 +66,75 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
       }
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
     },
-    onError: (error) => {
-      toast({
-        title: 'Claim Failed',
-        description: error.message || 'Failed to claim reward',
-        variant: 'destructive',
-      });
+    onError: (error: any) => {
+      // Check for demo wallet error
+      if (error.isDemo) {
+        toast({
+          title: 'Demo Wallet',
+          description: 'Connect a real wallet to claim your rewards.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Claim Failed',
+          description: error.message || 'Failed to claim reward',
+          variant: 'destructive',
+        });
+      }
     },
   });
+  
+  // Handle claim with signature
+  const handleClaim = async (rewardId: string) => {
+    if (isDemoWallet) {
+      toast({
+        title: 'Demo Wallet',
+        description: 'Connect a real wallet to claim your tokens.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!isConnected || !address) {
+      toast({
+        title: 'Wallet Not Connected',
+        description: 'Please connect your wallet to claim rewards.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    try {
+      setSigningRewardId(rewardId);
+      
+      // Generate timestamp and message
+      const timestamp = Date.now().toString();
+      const message = `Claim reward ${rewardId} from BMT University at ${timestamp}`;
+      
+      // Request signature from wallet
+      const signature = await signMessageAsync({ message });
+      
+      // Submit claim with signature
+      claimMutation.mutate({ rewardId, signature, timestamp });
+    } catch (error: any) {
+      // User rejected signature
+      if (error.name === 'UserRejectedRequestError' || error.message?.includes('User rejected')) {
+        toast({
+          title: 'Signature Required',
+          description: 'You must sign the message to claim your reward.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Signature Failed',
+          description: error.message || 'Failed to sign claim message.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setSigningRewardId(null);
+    }
+  };
 
   const totalPending = transactions.filter(t => t.status === 'pending').reduce((sum, t) => sum + t.amount, 0);
   const totalConfirmed = transactions.filter(t => t.status === 'confirmed').reduce((sum, t) => sum + t.amount, 0);
@@ -98,7 +170,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
               const isProcessing = tx.status === 'processing';
               const isFailed = tx.status === 'failed';
               const canClaim = isPending || isFailed;
-              const isClaiming = claimMutation.isPending && claimMutation.variables === tx.id;
+              const isClaiming = claimMutation.isPending && claimMutation.variables?.rewardId === tx.id;
               
               return (
                 <div
@@ -169,25 +241,37 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
                       <p className="text-xs text-muted-foreground">$BMT</p>
                     </div>
                     {canClaim && (
-                      <Button
-                        size="sm"
-                        onClick={() => claimMutation.mutate(tx.id)}
-                        disabled={isClaiming}
-                        className="bg-bmt-orange text-background hover:bg-bmt-orange/90 gap-1"
-                        data-testid={`button-claim-${tx.id}`}
-                      >
-                        {isClaiming ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Claiming...
-                          </>
-                        ) : (
-                          <>
-                            <Coins className="w-3 h-3" />
-                            {isFailed ? 'Retry' : 'Claim'}
-                          </>
-                        )}
-                      </Button>
+                      isDemoWallet ? (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <AlertTriangle className="w-3 h-3 text-bmt-orange" />
+                          Connect real wallet
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => handleClaim(tx.id)}
+                          disabled={isClaiming || signingRewardId === tx.id}
+                          className="bg-bmt-orange text-background hover:bg-bmt-orange/90 gap-1"
+                          data-testid={`button-claim-${tx.id}`}
+                        >
+                          {signingRewardId === tx.id ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Signing...
+                            </>
+                          ) : isClaiming ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Claiming...
+                            </>
+                          ) : (
+                            <>
+                              <Coins className="w-3 h-3" />
+                              {isFailed ? 'Retry' : 'Claim'}
+                            </>
+                          )}
+                        </Button>
+                      )
                     )}
                     {isProcessing && (
                       <div className="text-xs text-kaspa-cyan flex items-center gap-1">

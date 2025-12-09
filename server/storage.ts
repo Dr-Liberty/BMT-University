@@ -137,6 +137,12 @@ export interface IStorage {
   hasUserCompletedCourseReward(userId: string, courseId: string): Promise<boolean>;
   getRewardByUserAndCourse(userId: string, courseId: string): Promise<Reward | undefined>;
   
+  // Daily payout limit methods
+  getDailyPayoutTotal(walletAddress: string, date: string): Promise<number>;
+  recordDailyPayout(walletAddress: string, date: string, amount: number): Promise<void>;
+  rollbackDailyPayout(walletAddress: string, date: string, amount: number): Promise<void>;
+  tryReserveDailyPayout(walletAddress: string, date: string, amount: number, maxLimit: number): Promise<boolean>;
+  
   // Device fingerprint methods
   saveDeviceFingerprint(data: {
     fingerprintHash: string;
@@ -969,6 +975,84 @@ export class DatabaseStorage implements IStorage {
         eq(rewards.courseId, courseId)
       ));
     return reward || undefined;
+  }
+
+  // Daily payout limit methods
+  async getDailyPayoutTotal(walletAddress: string, date: string): Promise<number> {
+    const result = await db.execute(sql`
+      SELECT COALESCE(SUM(total_paid_out), 0) as total
+      FROM daily_payout_limits
+      WHERE LOWER(wallet_address) = LOWER(${walletAddress})
+      AND date = ${date}
+    `);
+    const rows = result.rows as any[];
+    return rows[0]?.total ? parseInt(rows[0].total) : 0;
+  }
+
+  async recordDailyPayout(walletAddress: string, date: string, amount: number): Promise<void> {
+    await db.execute(sql`
+      INSERT INTO daily_payout_limits (id, wallet_address, date, total_paid_out, transaction_count)
+      VALUES (gen_random_uuid(), ${walletAddress}, ${date}, ${amount}, 1)
+      ON CONFLICT (wallet_address, date) 
+      DO UPDATE SET 
+        total_paid_out = daily_payout_limits.total_paid_out + ${amount},
+        transaction_count = daily_payout_limits.transaction_count + 1,
+        updated_at = NOW()
+    `);
+  }
+
+  async rollbackDailyPayout(walletAddress: string, date: string, amount: number): Promise<void> {
+    await db.execute(sql`
+      UPDATE daily_payout_limits 
+      SET 
+        total_paid_out = GREATEST(0, total_paid_out - ${amount}),
+        transaction_count = GREATEST(0, transaction_count - 1),
+        updated_at = NOW()
+      WHERE LOWER(wallet_address) = LOWER(${walletAddress})
+      AND date = ${date}
+    `);
+  }
+
+  // Atomic reserve that checks limit and reserves in one transaction
+  // Returns true if reservation succeeded, false if limit would be exceeded
+  async tryReserveDailyPayout(walletAddress: string, date: string, amount: number, maxLimit: number): Promise<boolean> {
+    // Use INSERT ... ON CONFLICT with a conditional check
+    // This ensures atomicity - the insert/update only happens if the new total <= maxLimit
+    const result = await db.execute(sql`
+      INSERT INTO daily_payout_limits (id, wallet_address, date, total_paid_out, transaction_count, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${walletAddress}, ${date}, ${amount}, 1, NOW(), NOW())
+      ON CONFLICT (wallet_address, date) 
+      DO UPDATE SET 
+        total_paid_out = daily_payout_limits.total_paid_out + ${amount},
+        transaction_count = daily_payout_limits.transaction_count + 1,
+        updated_at = NOW()
+      WHERE daily_payout_limits.total_paid_out + ${amount} <= ${maxLimit}
+      RETURNING id
+    `);
+    
+    // Check if a row was inserted/updated
+    const rows = result.rows as any[];
+    if (rows.length > 0) {
+      return true; // Reservation succeeded
+    }
+    
+    // If no rows returned, check if it's because limit was exceeded or no conflict
+    // Need to check current value
+    const currentTotal = await this.getDailyPayoutTotal(walletAddress, date);
+    
+    // If current total is 0, the INSERT should have succeeded (new record)
+    // If no rows returned and currentTotal is 0, try a direct insert
+    if (currentTotal === 0) {
+      // First time insert - do it directly
+      if (amount <= maxLimit) {
+        await this.recordDailyPayout(walletAddress, date, amount);
+        return true;
+      }
+      return false;
+    }
+    
+    // Limit would be exceeded
+    return false;
   }
 
   // Device fingerprint methods

@@ -1669,10 +1669,51 @@ export async function registerRoutes(
     }
   });
 
+  // Daily payout limit per wallet (50,000 BMT)
+  const DAILY_PAYOUT_LIMIT_BMT = 50000;
+  
   app.post("/api/rewards/:rewardId/claim", rateLimitMiddleware('rewardClaim'), authMiddleware, async (req: any, res) => {
     const rewardId = req.params.rewardId;
     
     try {
+      // ============ SECURITY: Block demo wallets from claiming rewards ============
+      if (req.user.walletAddress?.toLowerCase().startsWith('0xdead')) {
+        return res.status(403).json({ 
+          error: "Demo wallets cannot claim rewards. Connect a real wallet to claim your tokens.",
+          isDemo: true
+        });
+      }
+      
+      // ============ SECURITY: Verify wallet ownership via signature ============
+      const { signature, timestamp } = req.body;
+      
+      // Require signature for real wallet claims
+      if (!signature || !timestamp) {
+        return res.status(400).json({ 
+          error: "Signature required to claim rewards. Please sign the message in your wallet.",
+          requiresSignature: true,
+          claimMessage: `Claim reward ${rewardId} from BMT University at ${Date.now()}`
+        });
+      }
+      
+      // Verify timestamp is recent (within 5 minutes, symmetric window - reject future timestamps too)
+      const timestampNum = parseInt(timestamp);
+      const now = Date.now();
+      const timeDiff = now - timestampNum;
+      // Reject if: NaN, older than 5 minutes, or more than 30 seconds in the future
+      if (isNaN(timestampNum) || timeDiff > 5 * 60 * 1000 || timeDiff < -30 * 1000) {
+        return res.status(400).json({ 
+          error: "Signature expired or invalid timestamp. Please try again.",
+          requiresSignature: true
+        });
+      }
+      
+      // Verify the signature
+      const claimMessage = `Claim reward ${rewardId} from BMT University at ${timestamp}`;
+      if (!verifySignature(claimMessage, signature, req.user.walletAddress)) {
+        return res.status(401).json({ error: "Invalid signature. Please sign with the connected wallet." });
+      }
+      
       // ============ SECURITY: Per-user throttle for claims ============
       if (!checkUserThrottle(req.user.id, 'reward_claim', 10000)) {
         return res.status(429).json({ 
@@ -1700,6 +1741,28 @@ export async function registerRoutes(
       // Allow retry for pending, processing, or failed rewards
       if (reward.status === 'confirmed') {
         return res.status(400).json({ error: "Reward already claimed" });
+      }
+      
+      // ============ SECURITY: Atomic daily payout limit check and reservation ============
+      // Uses a single atomic SQL operation to prevent concurrent claims from bypassing the limit
+      const today = new Date().toISOString().split('T')[0];
+      const reservationSucceeded = await storage.tryReserveDailyPayout(
+        req.user.walletAddress, 
+        today, 
+        reward.amount, 
+        DAILY_PAYOUT_LIMIT_BMT
+      );
+      
+      if (!reservationSucceeded) {
+        const dailyPayouts = await storage.getDailyPayoutTotal(req.user.walletAddress, today);
+        const remaining = Math.max(0, DAILY_PAYOUT_LIMIT_BMT - dailyPayouts);
+        return res.status(429).json({ 
+          error: `Daily payout limit reached. You can claim up to ${remaining.toLocaleString()} BMT more today.`,
+          dailyLimit: DAILY_PAYOUT_LIMIT_BMT,
+          usedToday: dailyPayouts,
+          remaining,
+          resetsAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString()
+        });
       }
       
       // Check if paymaster is configured
@@ -1745,6 +1808,12 @@ export async function registerRoutes(
       
       if (!result.success || !result.txHash) {
         console.error(`[Claim] Broadcast FAILED: ${result.error}`);
+        
+        // Rollback pre-reserved daily payout on broadcast failure
+        const rollbackDate = new Date().toISOString().split('T')[0];
+        await storage.rollbackDailyPayout(req.user.walletAddress, rollbackDate, reward.amount);
+        console.log(`[Claim] Rolled back pre-reserved payout due to broadcast failure: ${reward.amount} BMT`);
+        
         return res.status(500).json({ 
           error: "Blockchain transaction failed", 
           details: result.error 
@@ -1792,6 +1861,8 @@ export async function registerRoutes(
                   processedAt: new Date(),
                 });
                 
+                // Daily payout already pre-reserved, no need to record again
+                
                 // Update associated payout transactions
                 const payouts = await storage.getPayoutsByReward(rewardId);
                 for (const payout of payouts) {
@@ -1805,6 +1876,14 @@ export async function registerRoutes(
                 console.log(`[Claim] CONFIRMED: ${reward.amount} BMT to ${user.walletAddress}, block ${status.blockNumber}`);
               } else {
                 await storage.updateReward(rewardId, { status: 'failed' });
+                
+                // Rollback the pre-reserved daily payout on failed transaction
+                const rollbackDate = new Date().toISOString().split('T')[0];
+                if (user.walletAddress) {
+                  await storage.rollbackDailyPayout(user.walletAddress, rollbackDate, reward.amount);
+                  console.log(`[Claim] Rolled back daily payout: ${reward.amount} BMT for ${user.walletAddress}`);
+                }
+                
                 console.error(`[Claim] Transaction reverted: ${result.txHash}`);
               }
               return;
