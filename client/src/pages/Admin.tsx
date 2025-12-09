@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState } from "react";
-import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout, Share2, Gift, UserPlus, ShieldX, Loader2 } from "lucide-react";
+import { Wallet, RefreshCw, Settings, Coins, CheckCircle, Clock, AlertCircle, ArrowUpRight, Key, AlertTriangle, TrendingUp, Users, DollarSign, Plus, Edit, Trash2, BookOpen, Layout, Share2, Gift, UserPlus, ShieldX, Loader2, Shield, Globe, Wifi, Server, Search, Eye } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -122,6 +122,47 @@ interface ReferralStats {
   qualifiedReferrals: number;
   rewardedReferrals: number;
   totalBmtPaid: number;
+}
+
+interface IpReputationStats {
+  totalChecks: number;
+  blockedCount: number;
+  vpnCount: number;
+  torCount: number;
+  datacenterCount: number;
+  highFraudCount: number;
+  riskDistribution: { low: number; medium: number; high: number; blocked: number };
+  topCountries: { country: string; count: number }[];
+}
+
+interface SuspiciousIp {
+  ipHash: string;
+  fraudScore: number;
+  isVpn: boolean;
+  isTor: boolean;
+  isProxy: boolean;
+  isBot: boolean;
+  isDatacenter: boolean;
+  country: string;
+  isp: string;
+  riskLevel: string;
+  checkedAt: string;
+}
+
+interface IpCacheEntry {
+  id: string;
+  ipHash: string;
+  fraudScore: number;
+  isVpn: boolean;
+  isTor: boolean;
+  isProxy: boolean;
+  isBot: boolean;
+  isDatacenter: boolean;
+  country: string;
+  isp: string;
+  riskLevel: string;
+  checkedAt: string;
+  expiresAt: string;
 }
 
 const defaultCourseForm: CourseFormData = {
@@ -338,6 +379,47 @@ export default function Admin() {
     updateReferralSettingsMutation.mutate(referralSettingsForm);
   };
 
+  // IP Reputation state and queries
+  const [ipToCheck, setIpToCheck] = useState('');
+  const [ipCheckResult, setIpCheckResult] = useState<any>(null);
+
+  const { data: ipReputationStats, isLoading: ipStatsLoading, refetch: refetchIpStats } = useQuery<IpReputationStats>({
+    queryKey: ['/api/admin/security/ip-reputation/stats'],
+    enabled: isAdmin,
+  });
+
+  const { data: suspiciousIps, isLoading: suspiciousIpsLoading, refetch: refetchSuspiciousIps } = useQuery<SuspiciousIp[]>({
+    queryKey: ['/api/admin/security/ip-reputation/suspicious'],
+    enabled: isAdmin,
+  });
+
+  const { data: ipCache, isLoading: ipCacheLoading, refetch: refetchIpCache } = useQuery<IpCacheEntry[]>({
+    queryKey: ['/api/admin/security/ip-reputation/cache'],
+    enabled: isAdmin,
+  });
+
+  const checkIpMutation = useMutation({
+    mutationFn: async (ip: string) => {
+      const response = await apiRequest('POST', '/api/admin/security/ip-reputation/check', { ip });
+      return response;
+    },
+    onSuccess: (data) => {
+      setIpCheckResult(data);
+      refetchIpStats();
+      refetchIpCache();
+      refetchSuspiciousIps();
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to check IP", variant: "destructive" });
+    },
+  });
+
+  const handleCheckIp = () => {
+    if (ipToCheck.trim()) {
+      checkIpMutation.mutate(ipToCheck.trim());
+    }
+  };
+
   const handleOpenCourseDialog = (course?: CourseWithStats) => {
     if (course) {
       setEditingCourse(course.id);
@@ -470,6 +552,10 @@ export default function Admin() {
           <TabsTrigger value="referrals" data-testid="tab-referrals">
             <Share2 className="w-4 h-4 mr-2" />
             Referrals
+          </TabsTrigger>
+          <TabsTrigger value="security" data-testid="tab-security">
+            <Shield className="w-4 h-4 mr-2" />
+            Security
           </TabsTrigger>
         </TabsList>
 
@@ -1424,6 +1510,311 @@ export default function Admin() {
                       <span className="font-bold text-primary">{(adminReferralStats?.totalBmtPaid || 0).toLocaleString()}</span>
                     </div>
                   </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="security">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Globe className="w-5 h-5" />
+                      IP Reputation Overview
+                    </CardTitle>
+                    <CardDescription>
+                      Track and block suspicious IP addresses
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      refetchIpStats();
+                      refetchSuspiciousIps();
+                      refetchIpCache();
+                    }}
+                    data-testid="button-refresh-ip-stats"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {ipStatsLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
+                  </div>
+                ) : ipReputationStats ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 bg-muted/50 rounded-lg" data-testid="stat-total-ip-checks">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Eye className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Total Checks</span>
+                        </div>
+                        <span className="text-xl font-bold" data-testid="text-total-ip-checks">{ipReputationStats.totalChecks}</span>
+                      </div>
+                      <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20" data-testid="stat-blocked-ips">
+                        <div className="flex items-center gap-2 mb-1">
+                          <ShieldX className="w-4 h-4 text-red-500" />
+                          <span className="text-xs text-red-500">Blocked</span>
+                        </div>
+                        <span className="text-xl font-bold text-red-500" data-testid="text-blocked-ip-count">{ipReputationStats.blockedCount}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2" data-testid="section-detection-breakdown">
+                      <p className="text-sm font-medium text-muted-foreground">Detection Breakdown</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center justify-between p-2 bg-muted/30 rounded" data-testid="stat-vpn-count">
+                          <div className="flex items-center gap-2">
+                            <Wifi className="w-3 h-3 text-orange-500" />
+                            <span className="text-xs">VPN</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs" data-testid="text-vpn-count">{ipReputationStats.vpnCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-muted/30 rounded" data-testid="stat-tor-count">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-3 h-3 text-purple-500" />
+                            <span className="text-xs">Tor</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs" data-testid="text-tor-count">{ipReputationStats.torCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-muted/30 rounded" data-testid="stat-datacenter-count">
+                          <div className="flex items-center gap-2">
+                            <Server className="w-3 h-3 text-blue-500" />
+                            <span className="text-xs">Datacenter</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs" data-testid="text-datacenter-count">{ipReputationStats.datacenterCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-muted/30 rounded" data-testid="stat-high-fraud-count">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-3 h-3 text-red-500" />
+                            <span className="text-xs">High Fraud</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs" data-testid="text-high-fraud-count">{ipReputationStats.highFraudCount}</Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2" data-testid="section-risk-distribution">
+                      <p className="text-sm font-medium text-muted-foreground">Risk Distribution</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30" data-testid="badge-risk-low">
+                          Low: {ipReputationStats.riskDistribution?.low || 0}
+                        </Badge>
+                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30" data-testid="badge-risk-medium">
+                          Medium: {ipReputationStats.riskDistribution?.medium || 0}
+                        </Badge>
+                        <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/30" data-testid="badge-risk-high">
+                          High: {ipReputationStats.riskDistribution?.high || 0}
+                        </Badge>
+                        <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30" data-testid="badge-risk-blocked">
+                          Blocked: {ipReputationStats.riskDistribution?.blocked || 0}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {ipReputationStats.topCountries && ipReputationStats.topCountries.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-muted-foreground">Top Countries</p>
+                        <div className="flex flex-wrap gap-2">
+                          {ipReputationStats.topCountries.slice(0, 5).map((c, i) => (
+                            <Badge key={i} variant="outline">
+                              {c.country}: {c.count}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No IP reputation data yet</p>
+                    <p className="text-sm">Data will appear after reward claims are attempted</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="w-5 h-5" />
+                  Manual IP Check
+                </CardTitle>
+                <CardDescription>
+                  Check the reputation of any IP address
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter IP address (e.g., 8.8.8.8)"
+                    value={ipToCheck}
+                    onChange={(e) => setIpToCheck(e.target.value)}
+                    data-testid="input-ip-check"
+                  />
+                  <Button
+                    onClick={handleCheckIp}
+                    disabled={checkIpMutation.isPending || !ipToCheck.trim()}
+                    data-testid="button-check-ip"
+                  >
+                    {checkIpMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+
+                {ipCheckResult && (
+                  <div className="p-4 bg-muted/50 rounded-lg space-y-3" data-testid="section-ip-check-result">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Risk Level</span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          ipCheckResult.riskLevel === 'blocked' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
+                          ipCheckResult.riskLevel === 'high' ? 'bg-orange-500/10 text-orange-600 border-orange-500/30' :
+                          ipCheckResult.riskLevel === 'medium' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30' :
+                          'bg-green-500/10 text-green-600 border-green-500/30'
+                        }
+                        data-testid="badge-ip-risk-level"
+                      >
+                        {ipCheckResult.riskLevel?.toUpperCase()}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Fraud Score</span>
+                        <span className={ipCheckResult.fraudScore > 75 ? 'text-red-500 font-medium' : ''} data-testid="text-ip-fraud-score">{ipCheckResult.fraudScore}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Country</span>
+                        <span data-testid="text-ip-country">{ipCheckResult.country || 'Unknown'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">VPN</span>
+                        <span className={ipCheckResult.isVpn ? 'text-orange-500' : 'text-green-500'} data-testid="text-ip-vpn">
+                          {ipCheckResult.isVpn ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tor</span>
+                        <span className={ipCheckResult.isTor ? 'text-purple-500' : 'text-green-500'} data-testid="text-ip-tor">
+                          {ipCheckResult.isTor ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Proxy</span>
+                        <span className={ipCheckResult.isProxy ? 'text-yellow-500' : 'text-green-500'} data-testid="text-ip-proxy">
+                          {ipCheckResult.isProxy ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Datacenter</span>
+                        <span className={ipCheckResult.isDatacenter ? 'text-blue-500' : 'text-green-500'} data-testid="text-ip-datacenter">
+                          {ipCheckResult.isDatacenter ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-muted-foreground">ISP</span>
+                        <span className="truncate max-w-[200px]" data-testid="text-ip-isp">{ipCheckResult.isp || 'Unknown'}</span>
+                      </div>
+                    </div>
+                    {ipCheckResult.shouldBlock && (
+                      <div className="p-2 bg-red-500/10 rounded text-red-500 text-sm flex items-center gap-2" data-testid="alert-ip-blocked">
+                        <ShieldX className="w-4 h-4" />
+                        This IP would be blocked from claiming rewards
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="md:col-span-2" data-testid="card-suspicious-ips">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  Suspicious IPs
+                </CardTitle>
+                <CardDescription>
+                  IP addresses flagged as potentially malicious
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {suspiciousIpsLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                ) : suspiciousIps && suspiciousIps.length > 0 ? (
+                  <Table data-testid="table-suspicious-ips">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>IP Hash</TableHead>
+                        <TableHead>Risk Level</TableHead>
+                        <TableHead>Fraud Score</TableHead>
+                        <TableHead>Detections</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>ISP</TableHead>
+                        <TableHead>Checked</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {suspiciousIps.slice(0, 20).map((ip, index) => (
+                        <TableRow key={index} data-testid={`row-suspicious-ip-${index}`}>
+                          <TableCell className="font-mono text-xs">{ip.ipHash?.slice(0, 12)}...</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                ip.riskLevel === 'blocked' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
+                                ip.riskLevel === 'high' ? 'bg-orange-500/10 text-orange-600 border-orange-500/30' :
+                                'bg-yellow-500/10 text-yellow-600 border-yellow-500/30'
+                              }
+                            >
+                              {ip.riskLevel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={ip.fraudScore > 75 ? 'text-red-500 font-medium' : ''}>
+                            {ip.fraudScore}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              {ip.isVpn && <Badge variant="outline" className="text-xs">VPN</Badge>}
+                              {ip.isTor && <Badge variant="outline" className="text-xs">Tor</Badge>}
+                              {ip.isProxy && <Badge variant="outline" className="text-xs">Proxy</Badge>}
+                              {ip.isDatacenter && <Badge variant="outline" className="text-xs">DC</Badge>}
+                              {ip.isBot && <Badge variant="outline" className="text-xs">Bot</Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>{ip.country || 'Unknown'}</TableCell>
+                          <TableCell className="max-w-[150px] truncate">{ip.isp || 'Unknown'}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {ip.checkedAt ? new Date(ip.checkedAt).toLocaleDateString() : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-50 text-green-500" />
+                    <p>No suspicious IPs detected</p>
+                    <p className="text-sm">Your platform is clean so far</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
