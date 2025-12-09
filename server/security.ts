@@ -11,6 +11,7 @@ import {
   postPayoutTracking,
   knownSinkAddresses,
   payoutTransactions,
+  ipReputationCache,
 } from "@shared/schema";
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { getOutboundTransfers, getCurrentBlockNumber } from './kasplex';
@@ -689,4 +690,363 @@ export async function runSecurityScan(): Promise<{
     walletsBlocked: clusterResult.walletsAffected,
     suspiciousCompletions: suspiciousCompletions.length,
   };
+}
+
+// ============ IP REPUTATION CHECKING ============
+// Uses IPQualityScore API to detect VPNs, proxies, datacenters, etc.
+
+const IP_REPUTATION_CONFIG = {
+  CACHE_HOURS: 24, // Cache results for 24 hours
+  HIGH_FRAUD_SCORE: 75, // Score >= 75 is high risk
+  MEDIUM_FRAUD_SCORE: 50, // Score >= 50 is medium risk
+  BLOCK_ON_VPN: true, // Block VPN users from claiming rewards
+  BLOCK_ON_TOR: true, // Block Tor users
+  BLOCK_ON_DATACENTER: true, // Block datacenter IPs
+  BLOCK_ON_HIGH_FRAUD: true, // Block high fraud score
+};
+
+export type IpReputationResult = {
+  isClean: boolean;
+  riskLevel: 'low' | 'medium' | 'high' | 'blocked';
+  isVpn: boolean;
+  isProxy: boolean;
+  isTor: boolean;
+  isDatacenter: boolean;
+  isBot: boolean;
+  fraudScore: number;
+  countryCode: string | null;
+  isp: string | null;
+  blockReason?: string;
+  cached: boolean;
+};
+
+// Check IP reputation from cache or API
+export async function checkIpReputation(ipAddress: string): Promise<IpReputationResult> {
+  // Normalize IP
+  const normalizedIp = ipAddress.trim().toLowerCase();
+  
+  // Skip check for localhost/private IPs
+  if (isPrivateIp(normalizedIp)) {
+    return {
+      isClean: true,
+      riskLevel: 'low',
+      isVpn: false,
+      isProxy: false,
+      isTor: false,
+      isDatacenter: false,
+      isBot: false,
+      fraudScore: 0,
+      countryCode: null,
+      isp: 'Local',
+      cached: false,
+    };
+  }
+  
+  // Check cache first
+  const cached = await getCachedIpReputation(normalizedIp);
+  if (cached) {
+    const result = buildResultFromCache(cached);
+    result.cached = true;
+    return result;
+  }
+  
+  // Query IPQualityScore API
+  const apiResult = await queryIpQualityScore(normalizedIp);
+  
+  // Cache the result
+  await cacheIpReputation(normalizedIp, apiResult);
+  
+  return apiResult;
+}
+
+// Check if IP is private/local
+function isPrivateIp(ip: string): boolean {
+  return (
+    ip === 'localhost' ||
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip.startsWith('10.') ||
+    ip.startsWith('172.16.') ||
+    ip.startsWith('172.17.') ||
+    ip.startsWith('172.18.') ||
+    ip.startsWith('172.19.') ||
+    ip.startsWith('172.20.') ||
+    ip.startsWith('172.21.') ||
+    ip.startsWith('172.22.') ||
+    ip.startsWith('172.23.') ||
+    ip.startsWith('172.24.') ||
+    ip.startsWith('172.25.') ||
+    ip.startsWith('172.26.') ||
+    ip.startsWith('172.27.') ||
+    ip.startsWith('172.28.') ||
+    ip.startsWith('172.29.') ||
+    ip.startsWith('172.30.') ||
+    ip.startsWith('172.31.') ||
+    ip.startsWith('192.168.') ||
+    ip.startsWith('169.254.')
+  );
+}
+
+// Get cached IP reputation
+async function getCachedIpReputation(ip: string) {
+  const now = new Date();
+  
+  const cached = await db.select()
+    .from(ipReputationCache)
+    .where(eq(ipReputationCache.ipAddress, ip))
+    .limit(1);
+    
+  if (cached.length === 0) return null;
+  
+  const record = cached[0];
+  
+  // Check if expired
+  if (record.expiresAt && record.expiresAt < now) {
+    // Delete expired cache
+    await db.delete(ipReputationCache)
+      .where(eq(ipReputationCache.id, record.id));
+    return null;
+  }
+  
+  return record;
+}
+
+// Build result from cached data
+function buildResultFromCache(cached: typeof ipReputationCache.$inferSelect): IpReputationResult {
+  const result: IpReputationResult = {
+    isClean: true,
+    riskLevel: cached.riskLevel as 'low' | 'medium' | 'high' | 'blocked',
+    isVpn: cached.isVpn,
+    isProxy: cached.isProxy,
+    isTor: cached.isTor,
+    isDatacenter: cached.isDatacenter,
+    isBot: cached.isBot,
+    fraudScore: cached.fraudScore || 0,
+    countryCode: cached.countryCode || null,
+    isp: cached.isp || null,
+    cached: true,
+  };
+  
+  // Determine if blocked
+  const blockReasons: string[] = [];
+  
+  if (IP_REPUTATION_CONFIG.BLOCK_ON_VPN && cached.isVpn) {
+    blockReasons.push('VPN detected');
+  }
+  if (IP_REPUTATION_CONFIG.BLOCK_ON_TOR && cached.isTor) {
+    blockReasons.push('Tor network detected');
+  }
+  if (IP_REPUTATION_CONFIG.BLOCK_ON_DATACENTER && cached.isDatacenter) {
+    blockReasons.push('Datacenter/hosting IP');
+  }
+  if (IP_REPUTATION_CONFIG.BLOCK_ON_HIGH_FRAUD && (cached.fraudScore || 0) >= IP_REPUTATION_CONFIG.HIGH_FRAUD_SCORE) {
+    blockReasons.push('High fraud score');
+  }
+  
+  if (blockReasons.length > 0) {
+    result.isClean = false;
+    result.riskLevel = 'blocked';
+    result.blockReason = blockReasons.join(', ');
+  }
+  
+  return result;
+}
+
+// Query IPQualityScore API
+async function queryIpQualityScore(ip: string): Promise<IpReputationResult> {
+  const apiKey = process.env.IPQS_API_KEY;
+  
+  // If no API key, return permissive result (allow but log warning)
+  if (!apiKey) {
+    console.warn('[Security] IPQS_API_KEY not configured, skipping IP reputation check');
+    return {
+      isClean: true,
+      riskLevel: 'low',
+      isVpn: false,
+      isProxy: false,
+      isTor: false,
+      isDatacenter: false,
+      isBot: false,
+      fraudScore: 0,
+      countryCode: null,
+      isp: null,
+      cached: false,
+    };
+  }
+  
+  try {
+    const url = `https://ipqualityscore.com/api/json/ip/${apiKey}/${ip}?strictness=1&allow_public_access_points=true&fast=true&lighter_penalties=false&mobile=true`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (!data.success) {
+      console.error('[Security] IPQS API error:', data.message);
+      return {
+        isClean: true,
+        riskLevel: 'low',
+        isVpn: false,
+        isProxy: false,
+        isTor: false,
+        isDatacenter: false,
+        isBot: false,
+        fraudScore: 0,
+        countryCode: null,
+        isp: null,
+        cached: false,
+      };
+    }
+    
+    // Parse response
+    const isVpn = data.vpn === true;
+    const isProxy = data.proxy === true;
+    const isTor = data.tor === true;
+    const isDatacenter = data.is_crawler === true || data.host?.includes('datacenter') || data.host?.includes('hosting');
+    const isBot = data.bot_status === true;
+    const fraudScore = data.fraud_score || 0;
+    
+    // Determine risk level
+    let riskLevel: 'low' | 'medium' | 'high' | 'blocked' = 'low';
+    const blockReasons: string[] = [];
+    
+    if (fraudScore >= IP_REPUTATION_CONFIG.HIGH_FRAUD_SCORE) {
+      riskLevel = 'high';
+    } else if (fraudScore >= IP_REPUTATION_CONFIG.MEDIUM_FRAUD_SCORE) {
+      riskLevel = 'medium';
+    }
+    
+    // Check blocking conditions
+    if (IP_REPUTATION_CONFIG.BLOCK_ON_VPN && isVpn) {
+      blockReasons.push('VPN detected');
+      riskLevel = 'blocked';
+    }
+    if (IP_REPUTATION_CONFIG.BLOCK_ON_TOR && isTor) {
+      blockReasons.push('Tor network detected');
+      riskLevel = 'blocked';
+    }
+    if (IP_REPUTATION_CONFIG.BLOCK_ON_DATACENTER && isDatacenter) {
+      blockReasons.push('Datacenter/hosting IP');
+      riskLevel = 'blocked';
+    }
+    if (IP_REPUTATION_CONFIG.BLOCK_ON_HIGH_FRAUD && fraudScore >= IP_REPUTATION_CONFIG.HIGH_FRAUD_SCORE) {
+      blockReasons.push('High fraud score');
+      riskLevel = 'blocked';
+    }
+    
+    const result: IpReputationResult = {
+      isClean: blockReasons.length === 0,
+      riskLevel,
+      isVpn,
+      isProxy,
+      isTor,
+      isDatacenter,
+      isBot,
+      fraudScore,
+      countryCode: data.country_code || null,
+      isp: data.ISP || null,
+      cached: false,
+    };
+    
+    if (blockReasons.length > 0) {
+      result.blockReason = blockReasons.join(', ');
+    }
+    
+    console.log(`[Security] IP ${ip} reputation: score=${fraudScore}, vpn=${isVpn}, proxy=${isProxy}, datacenter=${isDatacenter}, risk=${riskLevel}`);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('[Security] Error querying IPQS:', error);
+    // Return permissive result on error
+    return {
+      isClean: true,
+      riskLevel: 'low',
+      isVpn: false,
+      isProxy: false,
+      isTor: false,
+      isDatacenter: false,
+      isBot: false,
+      fraudScore: 0,
+      countryCode: null,
+      isp: null,
+      cached: false,
+    };
+  }
+}
+
+// Cache IP reputation result
+async function cacheIpReputation(ip: string, result: IpReputationResult): Promise<void> {
+  const expiresAt = new Date(Date.now() + IP_REPUTATION_CONFIG.CACHE_HOURS * 60 * 60 * 1000);
+  
+  await db.insert(ipReputationCache)
+    .values({
+      ipAddress: ip,
+      isVpn: result.isVpn,
+      isProxy: result.isProxy,
+      isTor: result.isTor,
+      isDatacenter: result.isDatacenter,
+      isBot: result.isBot,
+      fraudScore: result.fraudScore,
+      countryCode: result.countryCode,
+      isp: result.isp,
+      riskLevel: result.riskLevel,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: ipReputationCache.ipAddress,
+      set: {
+        isVpn: result.isVpn,
+        isProxy: result.isProxy,
+        isTor: result.isTor,
+        isDatacenter: result.isDatacenter,
+        isBot: result.isBot,
+        fraudScore: result.fraudScore,
+        countryCode: result.countryCode,
+        isp: result.isp,
+        riskLevel: result.riskLevel,
+        checkedAt: new Date(),
+        expiresAt,
+      },
+    });
+}
+
+// Get IP reputation stats for admin
+export async function getIpReputationStats(): Promise<{
+  totalChecked: number;
+  blockedIps: number;
+  vpnCount: number;
+  proxyCount: number;
+  torCount: number;
+  datacenterCount: number;
+  avgFraudScore: number;
+}> {
+  const allRecords = await db.select().from(ipReputationCache);
+  
+  const blocked = allRecords.filter(r => r.riskLevel === 'blocked');
+  const vpns = allRecords.filter(r => r.isVpn);
+  const proxies = allRecords.filter(r => r.isProxy);
+  const tors = allRecords.filter(r => r.isTor);
+  const datacenters = allRecords.filter(r => r.isDatacenter);
+  
+  const avgFraudScore = allRecords.length > 0
+    ? allRecords.reduce((sum, r) => sum + (r.fraudScore || 0), 0) / allRecords.length
+    : 0;
+  
+  return {
+    totalChecked: allRecords.length,
+    blockedIps: blocked.length,
+    vpnCount: vpns.length,
+    proxyCount: proxies.length,
+    torCount: tors.length,
+    datacenterCount: datacenters.length,
+    avgFraudScore: Math.round(avgFraudScore),
+  };
+}
+
+// Admin function to list suspicious IPs
+export async function getSuspiciousIps(): Promise<typeof ipReputationCache.$inferSelect[]> {
+  return db.select()
+    .from(ipReputationCache)
+    .where(sql`${ipReputationCache.riskLevel} IN ('medium', 'high', 'blocked')`)
+    .orderBy(desc(ipReputationCache.fraudScore));
 }

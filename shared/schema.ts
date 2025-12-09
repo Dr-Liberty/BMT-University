@@ -716,3 +716,26 @@ export const courseCompletionVelocity = pgTable("course_completion_velocity", {
 });
 
 export type CourseCompletionVelocity = typeof courseCompletionVelocity.$inferSelect;
+
+// ============ IP REPUTATION CACHE ============
+// Cache IP reputation checks to avoid redundant API calls
+export const ipReputationCache = pgTable("ip_reputation_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ipAddress: varchar("ip_address", { length: 45 }).notNull().unique(), // IPv6 can be up to 45 chars
+  isVpn: boolean("is_vpn").notNull().default(false),
+  isProxy: boolean("is_proxy").notNull().default(false),
+  isTor: boolean("is_tor").notNull().default(false),
+  isDatacenter: boolean("is_datacenter").notNull().default(false),
+  isBot: boolean("is_bot").notNull().default(false),
+  fraudScore: integer("fraud_score"), // 0-100 from IPQS
+  abuseVelocity: varchar("abuse_velocity", { length: 20 }), // 'none', 'low', 'medium', 'high'
+  countryCode: varchar("country_code", { length: 2 }),
+  isp: varchar("isp", { length: 255 }),
+  organization: varchar("organization", { length: 255 }),
+  riskLevel: varchar("risk_level", { length: 20 }).notNull().default('unknown'), // 'low', 'medium', 'high', 'blocked'
+  rawResponse: jsonb("raw_response").$type<Record<string, unknown>>(),
+  checkedAt: timestamp("checked_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // Cache expiration
+});
+
+export type IpReputationCache = typeof ipReputationCache.$inferSelect;

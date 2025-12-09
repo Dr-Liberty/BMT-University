@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
-import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses } from "@shared/schema";
+import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses, ipReputationCache } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
@@ -1775,6 +1775,32 @@ export async function registerRoutes(
         });
       }
       
+      // ============ SECURITY: IP Reputation Check ============
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                       req.headers['x-real-ip'] || 
+                       req.connection?.remoteAddress || 
+                       req.ip || 
+                       'unknown';
+      
+      if (clientIp !== 'unknown') {
+        const { checkIpReputation } = await import('./security');
+        const ipResult = await checkIpReputation(clientIp);
+        
+        if (!ipResult.isClean && ipResult.riskLevel === 'blocked') {
+          console.log(`[Security] BLOCKED claim from suspicious IP: ${clientIp}, reason: ${ipResult.blockReason}`);
+          return res.status(403).json({ 
+            error: "This connection has been flagged for suspicious activity. Please disable VPN/proxy and try again from a regular internet connection.",
+            blocked: true,
+            reason: 'ip_reputation'
+          });
+        }
+        
+        // Log medium/high risk IPs but allow them
+        if (ipResult.riskLevel === 'medium' || ipResult.riskLevel === 'high') {
+          console.log(`[Security] WARNING: Claim from ${ipResult.riskLevel} risk IP: ${clientIp}, score=${ipResult.fraudScore}`);
+        }
+      }
+      
       // ============ SECURITY: Verify wallet ownership via signature ============
       const { signature, timestamp } = req.body;
       
@@ -2841,6 +2867,63 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error adding sink address:", error);
       res.status(500).json({ error: "Failed to add sink address" });
+    }
+  });
+  
+  // ============ IP REPUTATION ADMIN ENDPOINTS ============
+  
+  // Get IP reputation statistics
+  app.get("/api/admin/security/ip-reputation/stats", adminMiddleware, async (req: any, res) => {
+    try {
+      const { getIpReputationStats } = await import('./security');
+      const stats = await getIpReputationStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching IP reputation stats:", error);
+      res.status(500).json({ error: "Failed to fetch IP reputation stats" });
+    }
+  });
+  
+  // Get suspicious IPs
+  app.get("/api/admin/security/ip-reputation/suspicious", adminMiddleware, async (req: any, res) => {
+    try {
+      const { getSuspiciousIps } = await import('./security');
+      const suspicious = await getSuspiciousIps();
+      res.json(suspicious);
+    } catch (error) {
+      console.error("Error fetching suspicious IPs:", error);
+      res.status(500).json({ error: "Failed to fetch suspicious IPs" });
+    }
+  });
+  
+  // Check a specific IP manually
+  app.post("/api/admin/security/ip-reputation/check", adminMiddleware, async (req: any, res) => {
+    try {
+      const { ip } = req.body;
+      if (!ip) {
+        return res.status(400).json({ error: "IP address required" });
+      }
+      
+      const { checkIpReputation } = await import('./security');
+      const result = await checkIpReputation(ip);
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking IP reputation:", error);
+      res.status(500).json({ error: "Failed to check IP reputation" });
+    }
+  });
+  
+  // Get all cached IP reputations
+  app.get("/api/admin/security/ip-reputation/cache", adminMiddleware, async (req: any, res) => {
+    try {
+      const allCached = await db.select()
+        .from(ipReputationCache)
+        .orderBy(desc(ipReputationCache.checkedAt))
+        .limit(100);
+      res.json(allCached);
+    } catch (error) {
+      console.error("Error fetching IP cache:", error);
+      res.status(500).json({ error: "Failed to fetch IP cache" });
     }
   });
 
