@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
-import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity } from "@shared/schema";
+import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
@@ -2738,6 +2738,109 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error checking wallet:", error);
       res.status(500).json({ error: "Failed to check wallet" });
+    }
+  });
+
+  // ============ POST-PAYOUT MONITORING ENDPOINTS ============
+  
+  // Run post-payout monitoring to detect dumps
+  app.post("/api/admin/security/monitor-payouts", adminMiddleware, async (req: any, res) => {
+    try {
+      const { hoursToCheck } = req.body;
+      const { runPostPayoutMonitoring } = await import('./security');
+      
+      // Get token address from paymaster config
+      const config = await storage.getPaymasterConfig();
+      if (!config || !config.tokenContractAddress) {
+        return res.status(400).json({ error: "Paymaster token address not configured" });
+      }
+      
+      console.log('[Admin] Running post-payout monitoring...');
+      const result = await runPostPayoutMonitoring(config.tokenContractAddress, hoursToCheck || 24);
+      
+      res.json({
+        success: true,
+        ...result,
+        message: `Checked ${result.payoutsChecked} payouts, detected ${result.dumpsDetected} dumps, blocked ${result.walletsBlocked} wallets, found ${result.newSinksFound} new sink addresses`
+      });
+    } catch (error: any) {
+      console.error("Error running post-payout monitoring:", error);
+      res.status(500).json({ error: "Failed to run monitoring", details: error.message });
+    }
+  });
+  
+  // Get post-payout tracking data
+  app.get("/api/admin/security/payout-tracking", adminMiddleware, async (req: any, res) => {
+    try {
+      const tracking = await db.select()
+        .from(postPayoutTracking)
+        .orderBy(desc(postPayoutTracking.createdAt))
+        .limit(100);
+      res.json(tracking);
+    } catch (error) {
+      console.error("Error fetching payout tracking:", error);
+      res.status(500).json({ error: "Failed to fetch payout tracking" });
+    }
+  });
+  
+  // Get suspicious payout activity only
+  app.get("/api/admin/security/suspicious-payouts", adminMiddleware, async (req: any, res) => {
+    try {
+      const suspicious = await db.select()
+        .from(postPayoutTracking)
+        .where(eq(postPayoutTracking.isSuspicious, true))
+        .orderBy(desc(postPayoutTracking.createdAt));
+      res.json(suspicious);
+    } catch (error) {
+      console.error("Error fetching suspicious payouts:", error);
+      res.status(500).json({ error: "Failed to fetch suspicious payouts" });
+    }
+  });
+  
+  // Get known sink addresses
+  app.get("/api/admin/security/sink-addresses", adminMiddleware, async (req: any, res) => {
+    try {
+      const sinks = await db.select()
+        .from(knownSinkAddresses)
+        .orderBy(desc(knownSinkAddresses.uniqueSenders));
+      res.json(sinks);
+    } catch (error) {
+      console.error("Error fetching sink addresses:", error);
+      res.status(500).json({ error: "Failed to fetch sink addresses" });
+    }
+  });
+  
+  // Add/update a known sink address
+  app.post("/api/admin/security/sink-addresses", adminMiddleware, async (req: any, res) => {
+    try {
+      const { address, addressType, label, isFlagged } = req.body;
+      if (!address) {
+        return res.status(400).json({ error: "address required" });
+      }
+      
+      const normalizedAddress = address.toLowerCase();
+      
+      await db.insert(knownSinkAddresses)
+        .values({
+          address: normalizedAddress,
+          addressType: addressType || 'lp_pool',
+          label: label || 'Manually added sink',
+          isFlagged: isFlagged !== false,
+        })
+        .onConflictDoUpdate({
+          target: knownSinkAddresses.address,
+          set: {
+            addressType: addressType || 'lp_pool',
+            label: label || 'Manually added sink',
+            isFlagged: isFlagged !== false,
+            updatedAt: new Date(),
+          },
+        });
+      
+      res.json({ success: true, message: `Sink address ${normalizedAddress} added/updated` });
+    } catch (error) {
+      console.error("Error adding sink address:", error);
+      res.status(500).json({ error: "Failed to add sink address" });
     }
   });
 

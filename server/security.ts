@@ -8,8 +8,12 @@ import {
   users,
   rewards,
   enrollments,
+  postPayoutTracking,
+  knownSinkAddresses,
+  payoutTransactions,
 } from "@shared/schema";
 import { eq, and, sql, gte, desc } from "drizzle-orm";
+import { getOutboundTransfers, getCurrentBlockNumber } from './kasplex';
 
 // Security thresholds
 const SECURITY_THRESHOLDS = {
@@ -337,34 +341,302 @@ export async function detectAndUpdateClusters(): Promise<{ clustersFound: number
 }
 
 // ============ 4. POST-PAYOUT MONITORING ============
-// Note: This would require integration with a blockchain explorer API
-// For now, we'll create the structure for manual review
+
+// Thresholds for dump detection
+const DUMP_THRESHOLDS = {
+  INSTANT_DUMP_SECONDS: 300, // 5 minutes = instant dump
+  QUICK_DUMP_SECONDS: 3600, // 1 hour = quick dump
+  DAY_DUMP_SECONDS: 86400, // 24 hours = same-day dump
+  NEW_SINK_THRESHOLD: 3, // 3+ unique flagged wallets sending to same address = new sink
+};
+
+// Flag a wallet for rapid dump activity
 export async function flagSuspiciousPostPayoutActivity(
   walletAddress: string,
   payoutTxHash: string,
   destinationAddress: string,
   timeToTransferSeconds: number
 ): Promise<void> {
-  // If transfer happened within 5 minutes, flag as suspicious
-  if (timeToTransferSeconds < 300) {
-    await db.insert(walletBlacklist)
+  const normalizedWallet = walletAddress.toLowerCase();
+  const normalizedDest = destinationAddress.toLowerCase();
+  
+  // Determine severity based on how fast they dumped
+  let severity: 'flagged' | 'blocked' = 'flagged';
+  let reason = 'rapid_dump';
+  
+  if (timeToTransferSeconds < DUMP_THRESHOLDS.INSTANT_DUMP_SECONDS) {
+    severity = 'blocked'; // Block instant dumpers
+    reason = 'instant_dump';
+  }
+  
+  await db.insert(walletBlacklist)
+    .values({
+      walletAddress: normalizedWallet,
+      reason,
+      description: `Dumped rewards within ${Math.round(timeToTransferSeconds / 60)} minutes to ${normalizedDest}`,
+      severity,
+      evidenceTxHashes: [payoutTxHash],
+      flaggedBy: 'automated',
+    })
+    .onConflictDoUpdate({
+      target: walletBlacklist.walletAddress,
+      set: {
+        reason,
+        description: `Dumped rewards within ${Math.round(timeToTransferSeconds / 60)} minutes`,
+        severity,
+        updatedAt: new Date(),
+      },
+    });
+    
+  console.log(`[Security] Flagged wallet ${normalizedWallet} for ${reason} (${timeToTransferSeconds}s to dump)`);
+}
+
+// Update sink address statistics - tracks UNIQUE senders only
+async function updateSinkAddress(
+  address: string, 
+  amountReceived: number,
+  senderWallet: string
+): Promise<void> {
+  const normalizedAddress = address.toLowerCase();
+  const normalizedSender = senderWallet.toLowerCase();
+  
+  // Check if sink already exists
+  const existing = await db.select()
+    .from(knownSinkAddresses)
+    .where(eq(knownSinkAddresses.address, normalizedAddress))
+    .limit(1);
+    
+  if (existing.length > 0) {
+    // Check if this sender has already been counted for this sink
+    const existingTracking = await db.select()
+      .from(postPayoutTracking)
+      .where(and(
+        eq(postPayoutTracking.firstHopDestination, normalizedAddress),
+        eq(postPayoutTracking.recipientAddress, normalizedSender)
+      ))
+      .limit(2); // Get 2 to check if this is a repeat
+    
+    // Only increment uniqueSenders if this is the FIRST time this sender dumped to this sink
+    const isNewSender = existingTracking.length <= 1; // 1 means just recorded, 0 means error
+    
+    await db.update(knownSinkAddresses)
+      .set({
+        totalReceived: sql`${knownSinkAddresses.totalReceived} + ${amountReceived}`,
+        uniqueSenders: isNewSender 
+          ? sql`${knownSinkAddresses.uniqueSenders} + 1`
+          : knownSinkAddresses.uniqueSenders, // Don't increment for repeat senders
+        updatedAt: new Date(),
+      })
+      .where(eq(knownSinkAddresses.address, normalizedAddress));
+  } else {
+    // Create new potential sink record
+    await db.insert(knownSinkAddresses)
       .values({
-        walletAddress: walletAddress.toLowerCase(),
-        reason: 'rapid_dump',
-        description: `Transferred rewards within ${timeToTransferSeconds}s of receiving to ${destinationAddress}`,
-        severity: 'flagged',
-        evidenceTxHashes: [payoutTxHash],
-        flaggedBy: 'automated',
+        address: normalizedAddress,
+        addressType: 'unknown',
+        label: `Potential Sink (from ${normalizedSender.slice(0, 10)}...)`,
+        totalReceived: amountReceived,
+        uniqueSenders: 1,
+        isFlagged: false,
+      })
+      .onConflictDoNothing();
+  }
+}
+
+// Check if an address is a known sink
+async function isKnownSink(address: string): Promise<boolean> {
+  const normalizedAddress = address.toLowerCase();
+  const sink = await db.select()
+    .from(knownSinkAddresses)
+    .where(and(
+      eq(knownSinkAddresses.address, normalizedAddress),
+      eq(knownSinkAddresses.isFlagged, true)
+    ))
+    .limit(1);
+  return sink.length > 0;
+}
+
+// Auto-detect new sink addresses
+async function detectNewSinks(): Promise<number> {
+  // Find addresses that have received from 3+ flagged wallets
+  const potentialSinks = await db.select()
+    .from(knownSinkAddresses)
+    .where(and(
+      eq(knownSinkAddresses.isFlagged, false),
+      gte(knownSinkAddresses.uniqueSenders, DUMP_THRESHOLDS.NEW_SINK_THRESHOLD)
+    ));
+    
+  let sinksDetected = 0;
+  
+  for (const sink of potentialSinks) {
+    await db.update(knownSinkAddresses)
+      .set({
+        isFlagged: true,
+        addressType: 'sink_wallet',
+        label: `Auto-detected Sink (${sink.uniqueSenders} senders)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(knownSinkAddresses.id, sink.id));
+    
+    console.log(`[Security] Auto-flagged new sink address: ${sink.address} (${sink.uniqueSenders} unique senders)`);
+    sinksDetected++;
+  }
+  
+  return sinksDetected;
+}
+
+// Main monitoring job: Check recent payouts for dump activity
+export async function runPostPayoutMonitoring(
+  tokenAddress: string,
+  hoursToCheck: number = 24
+): Promise<{
+  payoutsChecked: number;
+  dumpsDetected: number;
+  walletsBlocked: number;
+  newSinksFound: number;
+}> {
+  console.log(`[Security] Running post-payout monitoring for last ${hoursToCheck}h...`);
+  
+  const cutoffTime = new Date(Date.now() - hoursToCheck * 60 * 60 * 1000);
+  
+  // Get recent successful payouts that haven't been tracked yet
+  const recentPayouts = await db.select()
+    .from(payoutTransactions)
+    .where(and(
+      eq(payoutTransactions.status, 'confirmed'),
+      gte(payoutTransactions.createdAt, cutoffTime)
+    ))
+    .limit(100); // Process in batches
+    
+  let payoutsChecked = 0;
+  let dumpsDetected = 0;
+  let walletsBlocked = 0;
+  
+  for (const payout of recentPayouts) {
+    // Skip if already tracked
+    const existingTracking = await db.select()
+      .from(postPayoutTracking)
+      .where(eq(postPayoutTracking.payoutTransactionId, payout.id))
+      .limit(1);
+      
+    if (existingTracking.length > 0 && existingTracking[0].trackingStatus !== 'pending') {
+      continue;
+    }
+    
+    payoutsChecked++;
+    
+    // Get outbound transfers from this recipient
+    const transfers = await getOutboundTransfers(
+      payout.recipientAddress,
+      tokenAddress
+    );
+    
+    if (transfers.length === 0) {
+      // No outbound transfers yet - mark as tracked/clean for now
+      if (existingTracking.length === 0) {
+        await db.insert(postPayoutTracking).values({
+          payoutTransactionId: payout.id,
+          recipientAddress: payout.recipientAddress.toLowerCase(),
+          trackingStatus: 'tracked',
+          lastCheckedAt: new Date(),
+        });
+      }
+      continue;
+    }
+    
+    // Find the first outbound transfer after the payout
+    const payoutBlock = payout.blockNumber || 0;
+    const outboundAfterPayout = transfers.filter(t => t.blockNumber > payoutBlock);
+    
+    if (outboundAfterPayout.length === 0) {
+      continue;
+    }
+    
+    const firstTransfer = outboundAfterPayout[0];
+    
+    // Estimate time between payout and first transfer (rough: ~2 sec per block on Kasplex)
+    const blockDiff = firstTransfer.blockNumber - payoutBlock;
+    const estimatedSeconds = blockDiff * 2; // Kasplex ~2 second block time
+    
+    // Check if destination is a known sink
+    const isToSink = await isKnownSink(firstTransfer.to);
+    
+    // Parse transfer amount
+    let transferAmount = 0;
+    try {
+      transferAmount = parseInt(firstTransfer.amount, 16);
+    } catch {}
+    
+    // Record in tracking table
+    const isSuspicious = estimatedSeconds < DUMP_THRESHOLDS.DAY_DUMP_SECONDS || isToSink;
+    
+    await db.insert(postPayoutTracking)
+      .values({
+        payoutTransactionId: payout.id,
+        recipientAddress: payout.recipientAddress.toLowerCase(),
+        trackingStatus: isSuspicious ? 'suspicious' : 'clean',
+        firstHopDestination: firstTransfer.to.toLowerCase(),
+        firstHopAmount: transferAmount,
+        firstHopTxHash: firstTransfer.txHash,
+        timeToFirstTransfer: estimatedSeconds,
+        destinationType: isToSink ? 'lp_pool' : 'wallet',
+        isSuspicious,
+        suspiciousReason: isSuspicious 
+          ? (isToSink ? 'Sent to known sink/LP' : `Dumped in ${Math.round(estimatedSeconds / 60)} minutes`)
+          : null,
+        lastCheckedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: walletBlacklist.walletAddress,
+        target: postPayoutTracking.payoutTransactionId,
         set: {
-          reason: 'rapid_dump',
-          description: `Transferred rewards within ${timeToTransferSeconds}s of receiving`,
-          updatedAt: new Date(),
+          trackingStatus: isSuspicious ? 'suspicious' : 'clean',
+          firstHopDestination: firstTransfer.to.toLowerCase(),
+          firstHopAmount: transferAmount,
+          firstHopTxHash: firstTransfer.txHash,
+          timeToFirstTransfer: estimatedSeconds,
+          isSuspicious,
+          lastCheckedAt: new Date(),
         },
       });
+    
+    // If suspicious, flag the wallet and track the destination
+    if (isSuspicious) {
+      dumpsDetected++;
+      
+      // Flag the wallet
+      if (estimatedSeconds < DUMP_THRESHOLDS.QUICK_DUMP_SECONDS) {
+        await flagSuspiciousPostPayoutActivity(
+          payout.recipientAddress,
+          payout.txHash || '',
+          firstTransfer.to,
+          estimatedSeconds
+        );
+        
+        if (estimatedSeconds < DUMP_THRESHOLDS.INSTANT_DUMP_SECONDS) {
+          walletsBlocked++;
+        }
+      }
+      
+      // Update sink address tracking
+      await updateSinkAddress(
+        firstTransfer.to,
+        transferAmount,
+        payout.recipientAddress
+      );
+    }
   }
+  
+  // Auto-detect new sink addresses
+  const newSinksFound = await detectNewSinks();
+  
+  console.log(`[Security] Post-payout monitoring complete: ${payoutsChecked} checked, ${dumpsDetected} dumps, ${walletsBlocked} blocked, ${newSinksFound} new sinks`);
+  
+  return {
+    payoutsChecked,
+    dumpsDetected,
+    walletsBlocked,
+    newSinksFound,
+  };
 }
 
 // Get cluster info for a wallet

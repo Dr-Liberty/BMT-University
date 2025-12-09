@@ -865,4 +865,108 @@ export function parseTokenAmount(amount: string, decimals: number): string {
   }
 }
 
+// ============ POST-PAYOUT TRACKING: Get outbound transfers from a wallet ============
+export interface TokenTransfer {
+  txHash: string;
+  from: string;
+  to: string;
+  amount: string; // Raw amount (with decimals)
+  blockNumber: number;
+  timestamp?: number;
+}
+
+// ERC20 Transfer event signature: Transfer(address,address,uint256)
+const TRANSFER_EVENT_SIGNATURE = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+export async function getOutboundTransfers(
+  walletAddress: string, 
+  tokenAddress: string,
+  fromBlock: string = 'earliest',
+  toBlock: string = 'latest'
+): Promise<TokenTransfer[]> {
+  try {
+    const normalizedWallet = walletAddress.toLowerCase();
+    // Pad wallet address to 32 bytes for topic matching
+    const paddedWallet = '0x' + normalizedWallet.slice(2).padStart(64, '0');
+    
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getLogs',
+        params: [{
+          address: tokenAddress,
+          topics: [
+            TRANSFER_EVENT_SIGNATURE,
+            paddedWallet, // from address (topic1)
+            null // to address (topic2) - any destination
+          ],
+          fromBlock,
+          toBlock
+        }]
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error('RPC error fetching transfers:', data.error);
+      return [];
+    }
+    
+    if (!data.result || !Array.isArray(data.result)) {
+      return [];
+    }
+    
+    return data.result.map((log: any) => ({
+      txHash: log.transactionHash,
+      from: '0x' + log.topics[1].slice(26), // Extract address from 32-byte topic
+      to: '0x' + log.topics[2].slice(26),
+      amount: log.data, // Raw hex amount
+      blockNumber: parseInt(log.blockNumber, 16),
+    }));
+  } catch (error) {
+    console.error('Error fetching outbound transfers:', error);
+    return [];
+  }
+}
+
+// Get transfers that occurred after a specific block
+export async function getTransfersAfterBlock(
+  walletAddress: string,
+  afterBlock: number,
+  tokenAddress: string
+): Promise<TokenTransfer[]> {
+  return getOutboundTransfers(
+    walletAddress, 
+    tokenAddress, 
+    '0x' + afterBlock.toString(16),
+    'latest'
+  );
+}
+
+// Helper to check current block number
+export async function getCurrentBlockNumber(): Promise<number> {
+  try {
+    const response = await fetch(KASPLEX_EVM_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_blockNumber',
+        params: []
+      }),
+    });
+    
+    const data = await response.json();
+    return parseInt(data.result, 16);
+  } catch (error) {
+    console.error('Error getting block number:', error);
+    return 0;
+  }
+}
+
 export { KASPLEX_EVM_RPC, KASPLEX_CHAIN_ID };
