@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link, useLocation } from 'wouter';
 import CourseCard, { CourseDisplay } from './CourseCard';
-import { Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Sparkles, TrendingUp, Clock, Star, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { isAuthenticated } from '@/lib/auth';
@@ -32,7 +32,7 @@ function mapCourseToDisplay(course: Course, enrollment?: EnrollmentWithQuizStatu
   };
 }
 
-type FilterType = 'featured' | 'trending' | 'new';
+type FilterType = 'featured' | 'trending' | 'best' | 'new';
 
 export default function FeaturedCourses() {
   const [, setLocation] = useLocation();
@@ -43,7 +43,25 @@ export default function FeaturedCourses() {
     queryKey: ['/api/courses'],
   });
   
-  const courses = coursesResponse?.courses ?? [];
+  const allCourses = coursesResponse?.courses ?? [];
+  
+  // Sort courses based on selected filter
+  const courses = [...allCourses].sort((a, b) => {
+    if (filter === 'trending') {
+      return (b.enrollmentCount || 0) - (a.enrollmentCount || 0);
+    }
+    if (filter === 'best') {
+      const ratingA = Number(a.rating) || 0;
+      const ratingB = Number(b.rating) || 0;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      return (b.ratingCount || 0) - (a.ratingCount || 0);
+    }
+    if (filter === 'new') {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    }
+    // 'featured' - use default order (orderIndex)
+    return (a.orderIndex || 0) - (b.orderIndex || 0);
+  });
 
   const { data: enrollments = [] } = useQuery<EnrollmentWithQuizStatus[]>({
     queryKey: ['/api/enrollments'],
@@ -114,6 +132,10 @@ export default function FeaturedCourses() {
               <TabsTrigger value="trending" className="gap-2" data-testid="tab-trending">
                 <TrendingUp className="w-4 h-4" />
                 Trending
+              </TabsTrigger>
+              <TabsTrigger value="best" className="gap-2" data-testid="tab-best">
+                <Star className="w-4 h-4" />
+                Best Rated
               </TabsTrigger>
               <TabsTrigger value="new" className="gap-2" data-testid="tab-new">
                 <Clock className="w-4 h-4" />
