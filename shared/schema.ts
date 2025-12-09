@@ -603,3 +603,65 @@ export const payoutNonceTracker = pgTable("payout_nonce_tracker", {
 });
 
 export type PayoutNonceTracker = typeof payoutNonceTracker.$inferSelect;
+
+// ============ WALLET BLACKLIST (Anti-Sybil) ============
+export const walletBlacklist = pgTable("wallet_blacklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull().unique(),
+  reason: varchar("reason", { length: 100 }).notNull(), // 'sybil_attack', 'rapid_dump', 'sink_wallet', 'linked_to_sink'
+  description: text("description"),
+  severity: varchar("severity", { length: 20 }).notNull().default('blocked'), // 'blocked', 'flagged', 'review'
+  linkedWallets: jsonb("linked_wallets").$type<string[]>().default([]), // Other wallets linked to this one
+  totalDrained: integer("total_drained").default(0), // Amount drained through this wallet
+  evidenceTxHashes: jsonb("evidence_tx_hashes").$type<string[]>().default([]), // Transaction hashes as evidence
+  flaggedBy: varchar("flagged_by", { length: 50 }).default('system'), // 'system', 'admin', 'automated'
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWalletBlacklistSchema = createInsertSchema(walletBlacklist).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertWalletBlacklist = z.infer<typeof insertWalletBlacklistSchema>;
+export type WalletBlacklist = typeof walletBlacklist.$inferSelect;
+
+// ============ POST-PAYOUT TRACKING ============
+// Track where rewards go after being paid out
+export const postPayoutTracking = pgTable("post_payout_tracking", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  payoutTransactionId: varchar("payout_transaction_id").references(() => payoutTransactions.id).notNull(),
+  recipientAddress: varchar("recipient_address", { length: 100 }).notNull(),
+  trackingStatus: varchar("tracking_status", { length: 30 }).notNull().default('pending'), // 'pending', 'tracked', 'suspicious', 'clean'
+  firstHopDestination: varchar("first_hop_destination", { length: 100 }), // Where tokens went first
+  firstHopAmount: integer("first_hop_amount"),
+  firstHopTxHash: varchar("first_hop_tx_hash", { length: 100 }),
+  timeToFirstTransfer: integer("time_to_first_transfer"), // Seconds between payout and first outbound transfer
+  destinationType: varchar("destination_type", { length: 30 }), // 'lp_pool', 'exchange', 'wallet', 'contract', 'unknown'
+  isSuspicious: boolean("is_suspicious").notNull().default(false),
+  suspiciousReason: text("suspicious_reason"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  lastCheckedAt: timestamp("last_checked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PostPayoutTracking = typeof postPayoutTracking.$inferSelect;
+
+// ============ KNOWN SINK/LP ADDRESSES ============
+// Track known addresses that receive dumped rewards
+export const knownSinkAddresses = pgTable("known_sink_addresses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  address: varchar("address", { length: 100 }).notNull().unique(),
+  addressType: varchar("address_type", { length: 30 }).notNull(), // 'lp_pool', 'exchange', 'sink_wallet', 'dex_router'
+  label: varchar("label", { length: 100 }), // e.g. "KASPACOM LP", "Suspicious Sink #1"
+  totalReceived: integer("total_received").default(0), // Total BMT received from reward wallets
+  uniqueSenders: integer("unique_senders").default(0), // Number of unique wallets that sent here
+  isFlagged: boolean("is_flagged").notNull().default(false), // True if this is a suspicious destination
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type KnownSinkAddress = typeof knownSinkAddresses.$inferSelect;
