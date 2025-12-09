@@ -2,6 +2,7 @@ import {
   type User, type InsertUser, 
   type AboutPage, type UpdateAboutPage, type RoadmapItem,
   type Course, type InsertCourse,
+  type CourseRating, type InsertCourseRating,
   type Module, type InsertModule,
   type Lesson, type InsertLesson,
   type LessonProgress, type InsertLessonProgress,
@@ -17,7 +18,7 @@ import {
   type ReferralSettings, type UpdateReferralSettings,
   type ReferralCode, type InsertReferralCode,
   type Referral, type InsertReferral,
-  users, courses, modules, lessons, lessonProgress,
+  users, courses, courseRatings, modules, lessons, lessonProgress,
   quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
   aboutPages, authNonces, authSessions,
@@ -40,6 +41,12 @@ export interface IStorage {
   createCourse(course: InsertCourse): Promise<Course>;
   updateCourse(id: string, data: Partial<InsertCourse>): Promise<Course | undefined>;
   deleteCourse(id: string): Promise<boolean>;
+  
+  // Course rating methods
+  getCourseRating(userId: string, courseId: string): Promise<CourseRating | undefined>;
+  getCourseRatings(courseId: string): Promise<CourseRating[]>;
+  createOrUpdateCourseRating(data: InsertCourseRating): Promise<CourseRating>;
+  recalculateCourseRating(courseId: string): Promise<void>;
   
   // Module methods
   getModule(id: string): Promise<Module | undefined>;
@@ -433,6 +440,54 @@ export class DatabaseStorage implements IStorage {
   async deleteCourse(id: string): Promise<boolean> {
     const result = await db.delete(courses).where(eq(courses.id, id));
     return true;
+  }
+
+  // Course rating methods
+  async getCourseRating(userId: string, courseId: string): Promise<CourseRating | undefined> {
+    const [rating] = await db.select().from(courseRatings)
+      .where(and(eq(courseRatings.userId, userId), eq(courseRatings.courseId, courseId)));
+    return rating || undefined;
+  }
+
+  async getCourseRatings(courseId: string): Promise<CourseRating[]> {
+    return db.select().from(courseRatings)
+      .where(eq(courseRatings.courseId, courseId))
+      .orderBy(desc(courseRatings.createdAt));
+  }
+
+  async createOrUpdateCourseRating(data: InsertCourseRating): Promise<CourseRating> {
+    // Check if rating exists
+    const existing = await this.getCourseRating(data.userId, data.courseId);
+    
+    if (existing) {
+      // Update existing rating
+      const [updated] = await db.update(courseRatings)
+        .set({ rating: data.rating, review: data.review, updatedAt: new Date() })
+        .where(eq(courseRatings.id, existing.id))
+        .returning();
+      await this.recalculateCourseRating(data.courseId);
+      return updated;
+    } else {
+      // Create new rating
+      const [newRating] = await db.insert(courseRatings).values(data).returning();
+      await this.recalculateCourseRating(data.courseId);
+      return newRating;
+    }
+  }
+
+  async recalculateCourseRating(courseId: string): Promise<void> {
+    const ratings = await this.getCourseRatings(courseId);
+    const ratingCount = ratings.length;
+    const ratingTotal = ratings.reduce((sum, r) => sum + r.rating, 0);
+    const avgRating = ratingCount > 0 ? (ratingTotal / ratingCount).toFixed(1) : null;
+    
+    await db.update(courses)
+      .set({ 
+        ratingCount, 
+        ratingTotal, 
+        rating: avgRating 
+      })
+      .where(eq(courses.id, courseId));
   }
 
   // Module methods
