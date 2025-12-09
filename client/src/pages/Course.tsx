@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle, Video, FileText, ChevronDown, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, Clock, Users, Star, BookOpen, Play, CheckCircle, Lock, Award, Loader2, AlertCircle, Video, FileText, ChevronDown, ChevronRight, Image as ImageIcon, Edit2 } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import type { Course as CourseType, Lesson, Quiz, Enrollment, Module } from '@shared/schema';
+import { isAuthenticated, getWalletAddress } from '@/lib/auth';
+import type { Course as CourseType, Lesson, Quiz, Enrollment, Module, CourseRating } from '@shared/schema';
 
 function isTwitterUrl(url: string): boolean {
   return url.includes('twitter.com/') || url.includes('x.com/');
@@ -105,6 +107,13 @@ export default function Course() {
   const { toast } = useToast();
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
+  const [userRating, setUserRating] = useState<number>(0);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [reviewText, setReviewText] = useState<string>('');
+  const [isEditingRating, setIsEditingRating] = useState<boolean>(false);
+
+  const walletAddress = getWalletAddress();
+  const isDemoWallet = walletAddress?.toLowerCase().startsWith('0xdead');
 
   const { data: course, isLoading, error } = useQuery<CourseWithDetails>({
     queryKey: [`/api/courses/${courseId}`],
@@ -123,6 +132,57 @@ export default function Course() {
 
   const enrollment = enrollments.find(e => e.courseId === courseId);
   const isEnrolled = !!enrollment;
+
+  // Fetch user's existing rating for this course
+  const { data: existingRating } = useQuery<CourseRating | null>({
+    queryKey: ['/api/courses', courseId, 'rating', 'me'],
+    enabled: !!courseId && isAuthenticated(),
+  });
+
+  // Initialize rating state when existing rating loads
+  useEffect(() => {
+    if (existingRating) {
+      setUserRating(existingRating.rating);
+      setReviewText(existingRating.review || '');
+    }
+  }, [existingRating]);
+
+  // Submit rating mutation
+  const ratingMutation = useMutation({
+    mutationFn: async ({ rating, review }: { rating: number; review?: string }) => {
+      const response = await apiRequest('POST', `/api/courses/${courseId}/rating`, { rating, review });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'rating', 'me'] });
+      queryClient.invalidateQueries({ queryKey: [`/api/courses/${courseId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/courses'] });
+      setIsEditingRating(false);
+      toast({
+        title: existingRating ? 'Rating updated!' : 'Thanks for rating!',
+        description: 'Your feedback helps other learners.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to submit rating',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSubmitRating = () => {
+    if (userRating < 1 || userRating > 5) {
+      toast({
+        title: 'Select a rating',
+        description: 'Please select 1-5 stars.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    ratingMutation.mutate({ rating: userRating, review: reviewText.trim() || undefined });
+  };
 
   const enrollMutation = useMutation({
     mutationFn: async () => {
@@ -615,6 +675,110 @@ export default function Course() {
                   >
                     {enrollMutation.isPending ? 'Enrolling...' : 'Enroll Now'}
                   </Button>
+                )}
+
+                {/* Rating Section - shows when enrolled and all lessons completed */}
+                {isEnrolled && allLessonsCompleted && (
+                  <div className="mt-6 pt-6 border-t border-border">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-heading font-semibold text-white">
+                        {existingRating ? 'Your Rating' : 'Rate This Course'}
+                      </h4>
+                      {existingRating && !isEditingRating && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setIsEditingRating(true)}
+                          data-testid="button-edit-rating"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {isDemoWallet ? (
+                      <p className="text-sm text-muted-foreground">
+                        Connect a real wallet to rate this course.
+                      </p>
+                    ) : existingRating && !isEditingRating ? (
+                      <div>
+                        <div className="flex items-center gap-1 mb-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-5 h-5 ${
+                                star <= existingRating.rating
+                                  ? 'text-bmt-orange fill-current'
+                                  : 'text-muted-foreground'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        {existingRating.review && (
+                          <p className="text-sm text-muted-foreground italic">
+                            "{existingRating.review}"
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              className="p-0.5 transition-transform hover:scale-110"
+                              onMouseEnter={() => setHoverRating(star)}
+                              onMouseLeave={() => setHoverRating(0)}
+                              onClick={() => setUserRating(star)}
+                              data-testid={`button-star-${star}`}
+                            >
+                              <Star
+                                className={`w-6 h-6 transition-colors ${
+                                  star <= (hoverRating || userRating)
+                                    ? 'text-bmt-orange fill-current'
+                                    : 'text-muted-foreground'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                        <Textarea
+                          placeholder="Share your experience (optional)"
+                          value={reviewText}
+                          onChange={(e) => setReviewText(e.target.value)}
+                          className="min-h-[80px] resize-none"
+                          data-testid="textarea-review"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-bmt-orange text-background"
+                            onClick={handleSubmitRating}
+                            disabled={ratingMutation.isPending || userRating === 0}
+                            data-testid="button-submit-rating"
+                          >
+                            {ratingMutation.isPending ? 'Submitting...' : existingRating ? 'Update Rating' : 'Submit Rating'}
+                          </Button>
+                          {isEditingRating && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setIsEditingRating(false);
+                                if (existingRating) {
+                                  setUserRating(existingRating.rating);
+                                  setReviewText(existingRating.review || '');
+                                }
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

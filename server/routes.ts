@@ -478,11 +478,16 @@ export async function registerRoutes(
     }
   });
 
-  // Submit or update a rating (requires enrollment)
+  // Submit or update a rating (requires enrollment, blocks demo wallets)
   app.post("/api/courses/:courseId/rating", authMiddleware, async (req: any, res) => {
     try {
       const courseId = req.params.courseId;
       const { rating, review } = req.body;
+      
+      // Block demo wallets from rating
+      if (req.user.walletAddress?.toLowerCase().startsWith('0xdead')) {
+        return res.status(403).json({ error: "Demo wallets cannot rate courses. Connect a real wallet to rate." });
+      }
       
       // Validate rating
       if (!rating || rating < 1 || rating > 5) {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAccount, useDisconnect, useConnect } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
-import { getAuthToken, setAuthToken, clearAuthToken } from '@/lib/auth';
+import { getAuthToken, setAuthToken, clearAuthToken, setWalletAddress } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Play, Wallet, LogOut, AlertCircle } from 'lucide-react';
 import type { User } from '@shared/schema';
@@ -140,6 +140,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       }
 
       setAuthToken(token);
+      setWalletAddress(walletAddress);
       setIsAuthenticated(true);
 
       queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
@@ -261,6 +262,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       const { token } = await verifyRes.json();
 
       setAuthToken(token);
+      setWalletAddress(DEMO_WALLET_ADDRESS);
       localStorage.setItem('demoMode', 'true');
       setIsAuthenticated(true);
       setIsDemoMode(true);
