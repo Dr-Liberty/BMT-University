@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import Footer from '@/components/Footer';
-import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw, Star } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { isAuthenticated } from '@/lib/auth';
@@ -42,6 +42,7 @@ function mapCourseToDisplay(course: Course, enrollment?: EnrollmentWithQuizStatu
     duration: course.duration,
     enrollmentCount: course.enrollmentCount,
     rating: course.rating,
+    ratingCount: course.ratingCount,
     bmtReward: course.bmtReward,
     progress: enrollment ? Number(enrollment.progress ?? 0) : undefined,
     quizPassed: enrollment?.quizPassed,
@@ -98,13 +99,29 @@ export default function Courses() {
     },
   });
 
-  const filteredCourses = courses.filter((course) => {
-    const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         course.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = category === 'All' || course.category === category;
-    const matchesDifficulty = difficulty === 'All' || course.difficulty === difficulty;
-    return matchesSearch && matchesCategory && matchesDifficulty;
-  });
+  const filteredCourses = courses
+    .filter((course) => {
+      const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           course.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = category === 'All' || course.category === category;
+      const matchesDifficulty = difficulty === 'All' || course.difficulty === difficulty;
+      return matchesSearch && matchesCategory && matchesDifficulty;
+    })
+    .sort((a, b) => {
+      if (filter === 'best') {
+        const ratingA = Number(a.rating) || 0;
+        const ratingB = Number(b.rating) || 0;
+        if (ratingB !== ratingA) return ratingB - ratingA;
+        return (b.ratingCount || 0) - (a.ratingCount || 0);
+      }
+      if (filter === 'trending') {
+        return (b.enrollmentCount || 0) - (a.enrollmentCount || 0);
+      }
+      if (filter === 'new') {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+      return 0;
+    });
 
   const handleEnroll = (courseId: string) => {
     if (!isAuthenticated()) {
@@ -175,6 +192,10 @@ export default function Courses() {
                 <TabsTrigger value="trending" className="gap-2" data-testid="tab-trending">
                   <TrendingUp className="w-4 h-4" />
                   Trending
+                </TabsTrigger>
+                <TabsTrigger value="best" className="gap-2" data-testid="tab-best">
+                  <Star className="w-4 h-4" />
+                  Best Rated
                 </TabsTrigger>
                 <TabsTrigger value="new" className="gap-2" data-testid="tab-new">
                   <Clock className="w-4 h-4" />

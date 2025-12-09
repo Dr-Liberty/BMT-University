@@ -16,6 +16,7 @@ export interface CourseDisplay {
   duration?: number | null;
   enrollmentCount: number;
   rating?: string | null;
+  ratingCount?: number;
   bmtReward: number;
   progress?: number;
   quizPassed?: boolean;
@@ -98,9 +99,10 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
             {(course.enrollmentCount ?? 0).toLocaleString()}
           </span>
           {course.rating && (
-            <span className="flex items-center gap-1 text-bmt-orange">
+            <span className="flex items-center gap-1 text-bmt-orange" data-testid={`rating-${course.id}`}>
               <Star className="w-4 h-4 fill-current" />
               {parseFloat(course.rating).toFixed(1)}
+              {course.ratingCount ? <span className="text-muted-foreground">({course.ratingCount})</span> : null}
             </span>
           )}
         </div>
