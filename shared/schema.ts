@@ -561,3 +561,45 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
 export type Referral = typeof referrals.$inferSelect;
+
+// ============ RATE LIMITING (PERSISTENT) ============
+export const rateLimitEvents = pgTable("rate_limit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  identifier: varchar("identifier", { length: 255 }).notNull(), // IP, wallet, fingerprint
+  identifierType: varchar("identifier_type", { length: 30 }).notNull(), // 'ip', 'wallet', 'fingerprint'
+  action: varchar("action", { length: 50 }).notNull(), // 'auth', 'claim_reward', 'quiz_submit', 'referral_apply'
+  count: integer("count").notNull().default(1),
+  windowStart: timestamp("window_start").notNull().defaultNow(),
+  windowEnd: timestamp("window_end").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type RateLimitEvent = typeof rateLimitEvents.$inferSelect;
+
+// ============ DAILY PAYOUT LIMITS ============
+export const dailyPayoutLimits = pgTable("daily_payout_limits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
+  totalPaidOut: integer("total_paid_out").notNull().default(0),
+  transactionCount: integer("transaction_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type DailyPayoutLimit = typeof dailyPayoutLimits.$inferSelect;
+
+// ============ PAYOUT NONCE TRACKER ============
+export const payoutNonceTracker = pgTable("payout_nonce_tracker", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  walletAddress: varchar("wallet_address", { length: 100 }).notNull().unique(), // Paymaster wallet
+  lastUsedNonce: integer("last_used_nonce").notNull().default(0),
+  lastConfirmedNonce: integer("last_confirmed_nonce").notNull().default(0),
+  isLocked: boolean("is_locked").notNull().default(false),
+  lockedAt: timestamp("locked_at"),
+  lockedBy: varchar("locked_by", { length: 100 }), // Transaction ID that locked it
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type PayoutNonceTracker = typeof payoutNonceTracker.$inferSelect;
