@@ -57,6 +57,52 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 *   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 2 wallets per device.
 *   **API Pagination**: Courses API supports limit/offset pagination (max 100 per page).
 *   **Frontend Caching**: React Query configured with 2-minute staleTime, 10-minute gcTime, and background refetch on window focus.
+*   **IP Reputation Scoring**: IPQualityScore API integration blocks VPN, Tor, datacenter, and high fraud score IPs from claiming rewards.
+*   **Post-Payout Monitoring**: Tracks wallet activity after rewards to detect token sinks (wallets receiving from many sources).
+*   **Wallet Cluster Detection**: Identifies groups of wallets sending to same destination addresses.
+*   **Admin Security Dashboard**: Real-time security analytics, suspicious IP monitoring, manual IP lookup, and detection statistics.
+
+### Cloudflare Setup (Recommended for Production)
+
+Cloudflare provides network-level protection that complements the application-level security already built into BMT University.
+
+**Setup Steps:**
+
+1. **Create Cloudflare Account**: Sign up at cloudflare.com (free plan available)
+2. **Add Your Domain**: Enter your domain and Cloudflare will scan existing DNS records
+3. **Update Nameservers**: Change your domain's nameservers to Cloudflare's (provided in dashboard)
+4. **Enable Bot Fight Mode**: Navigate to Security → Bots → Turn "Bot Fight Mode" ON
+5. **Configure SSL**: Set SSL/TLS to "Full (strict)" for end-to-end encryption
+
+**Recommended Security Settings:**
+
+| Setting | Location | Value |
+|---------|----------|-------|
+| Bot Fight Mode | Security → Bots | ON |
+| Browser Integrity Check | Security → Settings | ON |
+| Challenge Passage | Security → Settings | 30 minutes |
+| Security Level | Security → Settings | Medium (or High during attacks) |
+| Under Attack Mode | Security → Settings | Enable during active abuse |
+
+**WAF Rules for Additional Protection:**
+
+```
+# Block suspicious user agents
+Expression: (http.user_agent contains "bot" and not cf.bot_management.verified_bot)
+Action: Challenge
+
+# Rate limit reward claims by IP
+Expression: (http.request.uri.path contains "/api/rewards/claim")
+Action: Rate limit (10 requests per minute)
+```
+
+**Benefits:**
+
+- Automatic bot detection using ML (no CAPTCHAs needed)
+- DDoS mitigation at network edge
+- Global CDN for faster page loads
+- SSL certificate management
+- Real-time threat analytics
 
 ## External Dependencies
 
