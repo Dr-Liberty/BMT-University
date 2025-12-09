@@ -1663,7 +1663,13 @@ export async function registerRoutes(
       const decimals = tokenInfo?.decimals || 18;
       const amountInWei = parseTokenAmount(reward.amount.toString(), decimals);
       
-      console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT (${amountInWei} wei, ${decimals} decimals) to ${user.walletAddress}`);
+      // Get retry count from existing payout transaction (if any)
+      const existingPayouts = await storage.getPayoutsByReward(rewardId);
+      const retryCount = existingPayouts.length > 0 ? (existingPayouts[0].retryCount || 0) : 0;
+      const isRetry = reward.status === 'processing' || reward.status === 'failed' || reward.status === 'pending';
+      const currentAttempt = isRetry && existingPayouts.length > 0 ? retryCount + 1 : 0;
+      
+      console.log(`[Claim] Initiating BMT transfer: ${reward.amount} BMT (${amountInWei} wei, ${decimals} decimals) to ${user.walletAddress}, attempt ${currentAttempt + 1}`);
       
       // Use fast submit (broadcast only, no wait for confirmation)
       const { submitTransferERC20, checkTransactionStatus } = await import('./kasplex');
@@ -1672,7 +1678,8 @@ export async function registerRoutes(
         config.tokenContractAddress,
         user.walletAddress,
         amountInWei,
-        decimals
+        decimals,
+        currentAttempt // Pass retry attempt for escalating gas
       );
       
       if (!result.success || !result.txHash) {
@@ -1689,7 +1696,16 @@ export async function registerRoutes(
         txHash: result.txHash,
       });
       
-      console.log(`[Claim] Transaction broadcast: ${result.txHash}, starting background confirmation...`);
+      // Update payout transaction retry count
+      if (existingPayouts.length > 0) {
+        await storage.updatePayoutTransaction(existingPayouts[0].id, {
+          retryCount: currentAttempt,
+          status: 'pending',
+          txHash: result.txHash,
+        });
+      }
+      
+      console.log(`[Claim] Transaction broadcast: ${result.txHash}, attempt ${currentAttempt + 1} (gas ${4 + currentAttempt}x), starting background confirmation...`);
       
       // Return immediately with 202 Accepted - confirmation happens async
       res.status(202).json({

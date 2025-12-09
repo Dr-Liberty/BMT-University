@@ -135,11 +135,13 @@ export interface BroadcastResult {
 }
 
 // Submit transaction without waiting for confirmation (fast, for async flows)
+// retryAttempt: 0 = first try (4x gas), 1 = second try (5x gas), etc.
 export async function submitTransferERC20(
   tokenContract: string,
   toAddress: string,
   amount: string,
-  decimals: number = 18
+  decimals: number = 18,
+  retryAttempt: number = 0
 ): Promise<BroadcastResult> {
   const privateKey = getPaymasterPrivateKey();
   
@@ -152,7 +154,7 @@ export async function submitTransferERC20(
     const walletAddress = wallet.address;
     const amountBigInt = BigInt(amount);
     
-    console.log(`[FastSubmit] Initiating ERC-20 transfer:`);
+    console.log(`[FastSubmit] Initiating ERC-20 transfer (attempt ${retryAttempt + 1}):`);
     console.log(`  Token: ${tokenContract}`);
     console.log(`  To: ${toAddress}`);
     console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
@@ -161,12 +163,12 @@ export async function submitTransferERC20(
     // Get nonce using raw RPC call
     const nonce = await getRawNonce(walletAddress);
     
-    // Get current network gas price with 5x multiplier for reliable confirmation
-    // Base is ~2000 gwei, so 5x = ~10000 gwei * 100k gas = ~1 KAS per tx
-    // Ensure paymaster wallet has sufficient KAS for gas
+    // Gas multiplier: 4x base + 1x per retry attempt
+    // Attempt 0: 4x (~8000 gwei, ~0.8 KAS), Attempt 1: 5x (~10000 gwei, ~1 KAS), etc.
+    const gasMultiplier = BigInt(4 + retryAttempt);
     const networkGasPrice = await getNetworkGasPrice();
-    const gasPrice = networkGasPrice * 5n; // 5x multiplier for reliability
-    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei, nonce: ${nonce}`);
+    const gasPrice = networkGasPrice * gasMultiplier;
+    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei (${gasMultiplier}x), nonce: ${nonce}`);
     
     // Encode the transfer function call
     const iface = new ethers.Interface(ERC20_ABI);

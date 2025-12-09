@@ -387,6 +387,7 @@ export const payoutTransactions = pgTable("payout_transactions", {
   txHash: varchar("tx_hash", { length: 100 }),
   blockNumber: integer("block_number"),
   errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   processedAt: timestamp("processed_at"),
 });
