@@ -38,6 +38,8 @@ export const courses = pgTable("courses", {
   isPublished: boolean("is_published").notNull().default(false),
   enrollmentCount: integer("enrollment_count").notNull().default(0),
   rating: decimal("rating", { precision: 2, scale: 1 }),
+  ratingCount: integer("rating_count").notNull().default(0),
+  ratingTotal: integer("rating_total").notNull().default(0),
   orderIndex: integer("order_index").notNull().default(999),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -53,6 +55,26 @@ export const insertCourseSchema = createInsertSchema(courses).omit({
 
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
 export type Course = typeof courses.$inferSelect;
+
+// ============ COURSE RATINGS ============
+export const courseRatings = pgTable("course_ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  courseId: varchar("course_id").references(() => courses.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  rating: integer("rating").notNull(), // 1-5 stars
+  review: text("review"), // Optional review text
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCourseRatingSchema = createInsertSchema(courseRatings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCourseRating = z.infer<typeof insertCourseRatingSchema>;
+export type CourseRating = typeof courseRatings.$inferSelect;
 
 // ============ MODULES (Course Sections) ============
 export const modules = pgTable("modules", {
