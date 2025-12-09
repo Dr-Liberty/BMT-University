@@ -665,3 +665,54 @@ export const knownSinkAddresses = pgTable("known_sink_addresses", {
 });
 
 export type KnownSinkAddress = typeof knownSinkAddresses.$inferSelect;
+
+// ============ SECURITY VELOCITY TRACKING ============
+// Track wallet creation rates per IP/fingerprint for Sybil prevention
+export const securityVelocityTracking = pgTable("security_velocity_tracking", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  identifier: varchar("identifier", { length: 255 }).notNull(), // IP or fingerprint hash
+  identifierType: varchar("identifier_type", { length: 30 }).notNull(), // 'ip', 'fingerprint'
+  eventType: varchar("event_type", { length: 50 }).notNull(), // 'wallet_creation', 'course_completion', 'reward_claim'
+  walletAddress: varchar("wallet_address", { length: 100 }),
+  eventData: jsonb("event_data").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type SecurityVelocityTracking = typeof securityVelocityTracking.$inferSelect;
+
+// ============ WALLET CLUSTERS (Auto-detected) ============
+export const walletClusters = pgTable("wallet_clusters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clusterName: varchar("cluster_name", { length: 100 }),
+  walletAddresses: jsonb("wallet_addresses").$type<string[]>().notNull().default([]),
+  sharedFingerprints: jsonb("shared_fingerprints").$type<string[]>().default([]),
+  sharedIps: jsonb("shared_ips").$type<string[]>().default([]),
+  totalWallets: integer("total_wallets").notNull().default(0),
+  totalRewardsEarned: integer("total_rewards_earned").default(0),
+  riskScore: integer("risk_score").notNull().default(0), // 0-100
+  status: varchar("status", { length: 30 }).notNull().default('detected'), // 'detected', 'reviewed', 'blocked', 'cleared'
+  autoBlocked: boolean("auto_blocked").notNull().default(false),
+  blockedReason: text("blocked_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WalletCluster = typeof walletClusters.$inferSelect;
+
+// ============ COURSE COMPLETION VELOCITY ============
+export const courseCompletionVelocity = pgTable("course_completion_velocity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  courseId: varchar("course_id").references(() => courses.id).notNull(),
+  enrolledAt: timestamp("enrolled_at").notNull(),
+  firstLessonAt: timestamp("first_lesson_at"),
+  lastLessonAt: timestamp("last_lesson_at"),
+  quizCompletedAt: timestamp("quiz_completed_at"),
+  totalTimeSeconds: integer("total_time_seconds"), // Time from enrollment to quiz completion
+  lessonCount: integer("lesson_count").default(0),
+  isSuspicious: boolean("is_suspicious").notNull().default(false),
+  suspiciousReason: text("suspicious_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CourseCompletionVelocity = typeof courseCompletionVelocity.$inferSelect;

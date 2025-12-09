@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import express from "express";
 import path from "path";
 import { storage } from "./storage";
-import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes } from "crypto";
@@ -294,19 +296,39 @@ export async function registerRoutes(
       
       // Find or create user
       let user = await storage.getUserByWallet(walletAddress);
+      const isNewUser = !user;
+      
       if (!user) {
+        // ============ SECURITY: Check wallet creation velocity ============
+        const { fingerprintHash } = req.body;
+        const { checkWalletCreationVelocity, recordWalletCreation } = await import('./security');
+        
+        const velocityCheck = await checkWalletCreationVelocity(clientIp, fingerprintHash);
+        if (!velocityCheck.allowed) {
+          console.log(`[Security] BLOCKED wallet creation: ${walletAddress} from IP ${clientIp}, reason: ${velocityCheck.reason}`);
+          return res.status(429).json({ 
+            error: "Too many accounts created from this location. Please try again later or contact support.",
+            blocked: true,
+            retryAfter: 86400 // 24 hours
+          });
+        }
+        
         user = await storage.createUser({
           walletAddress,
           role: 'student',
         });
+        
+        // Record the wallet creation for velocity tracking
+        await recordWalletCreation(walletAddress, clientIp, fingerprintHash);
+        console.log(`[Security] New wallet registered: ${walletAddress}, IP: ${clientIp}, risk: ${velocityCheck.riskLevel}`);
       }
       
       // Check if this device/IP has been used by other wallets (farming detection on login)
-      const { fingerprintHash } = req.body;
+      const fingerprintHashForCheck = req.body.fingerprintHash;
       let farmingWarning = null;
       
-      if (fingerprintHash) {
-        const existingFingerprints = await storage.getDeviceFingerprintsByHash(fingerprintHash);
+      if (fingerprintHashForCheck) {
+        const existingFingerprints = await storage.getDeviceFingerprintsByHash(fingerprintHashForCheck);
         const uniqueWallets = new Set(existingFingerprints.map(f => f.walletAddress.toLowerCase()));
         
         // Add current wallet to check
@@ -1457,6 +1479,47 @@ export async function registerRoutes(
                 metadata: { previousFlags: highSeverityFlags.length },
               });
             } else {
+              // ============ SECURITY: Course completion velocity check ============
+              const { checkCourseCompletionVelocity, recordCourseCompletion } = await import('./security');
+              const lessons = await storage.getLessonsByCourse(course.id);
+              const velocityCheck = await checkCourseCompletionVelocity(
+                req.user.id, 
+                course.id, 
+                lessons.length,
+                course.duration || 30
+              );
+              
+              // Always record course completion for analytics
+              const enrollmentForVelocity = await storage.getEnrollment(req.user.id, course.id);
+              if (enrollmentForVelocity) {
+                await recordCourseCompletion(
+                  req.user.id,
+                  course.id,
+                  enrollmentForVelocity.enrolledAt || new Date(),
+                  velocityCheck.timeSpentSeconds,
+                  lessons.length,
+                  velocityCheck.isSuspicious,
+                  velocityCheck.reason
+                );
+              }
+              
+              if (velocityCheck.isSuspicious) {
+                console.log(`[Security] Suspicious completion velocity: user=${req.user.id}, course=${course.id}, reason=${velocityCheck.reason}`);
+                
+                // Log but don't block - flag for review instead
+                await storage.logSuspiciousActivity({
+                  userId: req.user.id,
+                  walletAddress: req.user.walletAddress,
+                  fingerprintHash,
+                  ipAddress: clientIp,
+                  activityType: 'suspicious_completion_velocity',
+                  description: velocityCheck.reason || 'Course completed too quickly',
+                  severity: 'medium',
+                  courseId: course.id,
+                  metadata: { timeSpentSeconds: velocityCheck.timeSpentSeconds, lessonCount: lessons.length },
+                });
+              }
+              
               // All checks passed - issue the reward
               reward = await storage.createReward({
                 userId: req.user.id,
@@ -2543,6 +2606,138 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching admin courses:", error);
       res.status(500).json({ error: "Failed to fetch courses" });
+    }
+  });
+
+  // ============ SECURITY ADMIN ENDPOINTS ============
+  
+  // Run security scan (detect clusters, suspicious activity)
+  app.post("/api/admin/security/scan", adminMiddleware, async (req: any, res) => {
+    try {
+      const { runSecurityScan } = await import('./security');
+      console.log('[Admin] Running security scan...');
+      const result = await runSecurityScan();
+      res.json({
+        success: true,
+        ...result,
+        message: `Found ${result.clustersFound} new clusters, blocked ${result.walletsBlocked} wallets, ${result.suspiciousCompletions} suspicious completions`
+      });
+    } catch (error: any) {
+      console.error("Error running security scan:", error);
+      res.status(500).json({ error: "Failed to run security scan", details: error.message });
+    }
+  });
+  
+  // Get all detected clusters
+  app.get("/api/admin/security/clusters", adminMiddleware, async (req: any, res) => {
+    try {
+      const clusters = await db.select()
+        .from(walletClusters)
+        .orderBy(desc(walletClusters.riskScore));
+      res.json(clusters);
+    } catch (error) {
+      console.error("Error fetching clusters:", error);
+      res.status(500).json({ error: "Failed to fetch clusters" });
+    }
+  });
+  
+  // Get blacklisted wallets
+  app.get("/api/admin/security/blacklist", adminMiddleware, async (req: any, res) => {
+    try {
+      const blacklist = await db.select()
+        .from(walletBlacklist)
+        .where(eq(walletBlacklist.isActive, true))
+        .orderBy(desc(walletBlacklist.createdAt));
+      res.json(blacklist);
+    } catch (error) {
+      console.error("Error fetching blacklist:", error);
+      res.status(500).json({ error: "Failed to fetch blacklist" });
+    }
+  });
+  
+  // Add wallet to blacklist
+  app.post("/api/admin/security/blacklist", adminMiddleware, async (req: any, res) => {
+    try {
+      const { walletAddress, reason, description, severity } = req.body;
+      if (!walletAddress || !reason) {
+        return res.status(400).json({ error: "walletAddress and reason required" });
+      }
+      await storage.addToBlacklist({
+        walletAddress,
+        reason,
+        description,
+        severity: severity || 'blocked',
+        flaggedBy: 'admin',
+      });
+      res.json({ success: true, message: `Wallet ${walletAddress} added to blacklist` });
+    } catch (error) {
+      console.error("Error adding to blacklist:", error);
+      res.status(500).json({ error: "Failed to add to blacklist" });
+    }
+  });
+  
+  // Remove wallet from blacklist
+  app.delete("/api/admin/security/blacklist/:walletAddress", adminMiddleware, async (req: any, res) => {
+    try {
+      const { walletAddress } = req.params;
+      await storage.removeFromBlacklist(walletAddress);
+      res.json({ success: true, message: `Wallet ${walletAddress} removed from blacklist` });
+    } catch (error) {
+      console.error("Error removing from blacklist:", error);
+      res.status(500).json({ error: "Failed to remove from blacklist" });
+    }
+  });
+  
+  // Get suspicious completions
+  app.get("/api/admin/security/suspicious-completions", adminMiddleware, async (req: any, res) => {
+    try {
+      const completions = await db.select()
+        .from(courseCompletionVelocity)
+        .where(eq(courseCompletionVelocity.isSuspicious, true))
+        .orderBy(desc(courseCompletionVelocity.createdAt));
+      res.json(completions);
+    } catch (error) {
+      console.error("Error fetching suspicious completions:", error);
+      res.status(500).json({ error: "Failed to fetch suspicious completions" });
+    }
+  });
+  
+  // Check wallet cluster info
+  app.get("/api/admin/security/wallet/:walletAddress", adminMiddleware, async (req: any, res) => {
+    try {
+      const { walletAddress } = req.params;
+      const { getWalletClusterInfo } = await import('./security');
+      
+      const [blacklistStatus, clusterInfo] = await Promise.all([
+        storage.isWalletBlacklisted(walletAddress),
+        getWalletClusterInfo(walletAddress)
+      ]);
+      
+      // Get connected wallets via fingerprint
+      const user = await storage.getUserByWallet(walletAddress);
+      let connectedWallets: string[] = [];
+      
+      if (user) {
+        const fingerprints = await storage.getDeviceFingerprintsByUser(user.id);
+        for (const fp of fingerprints) {
+          if (fp.fingerprintHash) {
+            const connected = await storage.getDeviceFingerprintsByHash(fp.fingerprintHash);
+            connectedWallets.push(...connected.map(c => c.walletAddress.toLowerCase()));
+          }
+        }
+        connectedWallets = [...new Set(connectedWallets)].filter(w => w !== walletAddress.toLowerCase());
+      }
+      
+      res.json({
+        walletAddress,
+        isBlacklisted: blacklistStatus.isBlacklisted,
+        blacklistReason: blacklistStatus.reason,
+        ...clusterInfo,
+        connectedWallets,
+      });
+    } catch (error) {
+      console.error("Error checking wallet:", error);
+      res.status(500).json({ error: "Failed to check wallet" });
     }
   });
 
