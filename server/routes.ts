@@ -22,109 +22,29 @@ import {
   getNetworkInfo,
   getKaspacomTokenData
 } from "./kasplex";
+import {
+  checkRateLimit,
+  checkUserThrottle,
+  isDuplicateRequest,
+  generateRequestHash,
+  generateClaimNonce,
+  validateAndConsumeNonce,
+  validateTimestampFreshness,
+  RATE_LIMITS,
+  type RateLimitType,
+} from "./rateLimiter";
 
-// ============ COMPREHENSIVE RATE LIMITING & SECURITY ============
+// ============ DURABLE RATE LIMITING & SECURITY ============
+// Rate limiting now uses PostgreSQL for persistence across restarts
 
-// Rate limit configurations for different endpoint types
-const RATE_LIMITS = {
-  auth: { window: 15 * 60 * 1000, maxRequests: 10 },          // 10 per 15 min
-  quiz: { window: 60 * 1000, maxRequests: 5 },                // 5 per minute
-  quizSubmit: { window: 5 * 1000, maxRequests: 1 },           // 1 per 5 seconds (per user)
-  rewards: { window: 60 * 1000, maxRequests: 10 },            // 10 per minute
-  rewardClaim: { window: 10 * 1000, maxRequests: 1 },         // 1 per 10 seconds
-  referrals: { window: 60 * 1000, maxRequests: 20 },          // 20 per minute
-  referralApply: { window: 60 * 1000, maxRequests: 3 },       // 3 per minute
-  general: { window: 60 * 1000, maxRequests: 60 },            // 60 per minute
-};
-
-// Rate limit stores
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-const userThrottleStore = new Map<string, number>(); // user:action -> last action time
-const requestDedupeStore = new Map<string, number>(); // hash -> timestamp
-
-function checkRateLimit(key: string, limitType: keyof typeof RATE_LIMITS = 'general'): boolean {
-  const now = Date.now();
-  const limit = RATE_LIMITS[limitType];
-  const entry = rateLimitStore.get(key);
-  
-  if (!entry || now > entry.resetTime) {
-    rateLimitStore.set(key, { count: 1, resetTime: now + limit.window });
-    return true;
-  }
-  
-  if (entry.count >= limit.maxRequests) {
-    return false;
-  }
-  
-  entry.count++;
-  return true;
-}
-
-// Per-user action throttling (e.g., 1 quiz submit per 5 seconds per user)
-function checkUserThrottle(userId: number, action: string, minIntervalMs: number): boolean {
-  const key = `${userId}:${action}`;
-  const now = Date.now();
-  const lastAction = userThrottleStore.get(key);
-  
-  if (lastAction && now - lastAction < minIntervalMs) {
-    return false;
-  }
-  
-  userThrottleStore.set(key, now);
-  return true;
-}
-
-// Request deduplication (prevent replay attacks within time window)
-function isDuplicateRequest(hash: string, windowMs: number = 5000): boolean {
-  const now = Date.now();
-  const lastRequest = requestDedupeStore.get(hash);
-  
-  if (lastRequest && now - lastRequest < windowMs) {
-    return true;
-  }
-  
-  requestDedupeStore.set(hash, now);
-  return false;
-}
-
-// Generate request hash for deduplication
-function generateRequestHash(userId: number, action: string, ...params: any[]): string {
-  return `${userId}:${action}:${params.join(':')}`;
-}
-
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now();
-  
-  // Clean rate limit entries
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (now > entry.resetTime) {
-      rateLimitStore.delete(key);
-    }
-  }
-  
-  // Clean throttle entries older than 1 minute
-  for (const [key, timestamp] of userThrottleStore.entries()) {
-    if (now - timestamp > 60 * 1000) {
-      userThrottleStore.delete(key);
-    }
-  }
-  
-  // Clean dedup entries older than 30 seconds
-  for (const [key, timestamp] of requestDedupeStore.entries()) {
-    if (now - timestamp > 30 * 1000) {
-      requestDedupeStore.delete(key);
-    }
-  }
-}, 30 * 1000);
-
-// Rate limiting middleware factory
-function rateLimitMiddleware(limitType: keyof typeof RATE_LIMITS) {
-  return (req: any, res: any, next: any) => {
+// Rate limiting middleware factory (now using durable store)
+function rateLimitMiddleware(limitType: RateLimitType) {
+  return async (req: any, res: any, next: any) => {
     const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
     const key = `${limitType}:${clientIp}`;
     
-    if (!checkRateLimit(key, limitType)) {
+    const allowed = await checkRateLimit(key, limitType);
+    if (!allowed) {
       const limit = RATE_LIMITS[limitType];
       return res.status(429).json({ 
         error: "Too many requests. Please slow down.",
@@ -137,12 +57,13 @@ function rateLimitMiddleware(limitType: keyof typeof RATE_LIMITS) {
 
 // User throttle middleware factory (requires authMiddleware to run first)
 function userThrottleMiddleware(action: string, minIntervalMs: number) {
-  return (req: any, res: any, next: any) => {
+  return async (req: any, res: any, next: any) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    if (!checkUserThrottle(req.user.id, action, minIntervalMs)) {
+    const allowed = await checkUserThrottle(req.user.id, action, minIntervalMs);
+    if (!allowed) {
       return res.status(429).json({ 
         error: "Please wait before trying again.",
         retryAfter: Math.ceil(minIntervalMs / 1000)
@@ -228,12 +149,33 @@ export async function registerRoutes(
     }
   });
 
+  // ============ SECURITY HEADERS (CSP) ============
+  app.use((req, res, next) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://platform.twitter.com https://syndication.twitter.com https://cdn.jsdelivr.net; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "img-src 'self' data: https: blob:; " +
+      "connect-src 'self' https://*.kasplex.io https://*.upstash.io wss://*.kasplex.io https://platform.twitter.com; " +
+      "frame-src 'self' https://platform.twitter.com https://syndication.twitter.com; " +
+      "object-src 'none'; " +
+      "base-uri 'self';"
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
   // ============ AUTH ============
   app.post("/api/auth/nonce", async (req, res) => {
     try {
       // Rate limiting
       const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-      if (!checkRateLimit(`nonce:${clientIp}`)) {
+      if (!(await checkRateLimit(`nonce:${clientIp}`, 'auth'))) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
       }
       
@@ -265,7 +207,7 @@ export async function registerRoutes(
     try {
       // Rate limiting
       const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-      if (!checkRateLimit(`verify:${clientIp}`)) {
+      if (!(await checkRateLimit(`verify:${clientIp}`, 'auth'))) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
       }
       
@@ -287,7 +229,7 @@ export async function registerRoutes(
         const message = `Sign this message to authenticate with BMT University: ${storedNonce.nonce}`;
         if (!verifySignature(message, signature, walletAddress)) {
           // Also increment rate limit on failed verification
-          checkRateLimit(`verify_fail:${clientIp}`);
+          await checkRateLimit(`verify_fail:${clientIp}`, 'auth');
           return res.status(401).json({ error: "Invalid signature" });
         }
       }
@@ -1261,7 +1203,7 @@ export async function registerRoutes(
   app.post("/api/quizzes/:quizId/submit", rateLimitMiddleware('quizSubmit'), authMiddleware, async (req: any, res) => {
     try {
       // ============ SECURITY: Per-user throttle (1 submission per 5 seconds) ============
-      if (!checkUserThrottle(req.user.id, 'quiz_submit', 5000)) {
+      if (!(await checkUserThrottle(req.user.id, 'quiz_submit', 5000))) {
         return res.status(429).json({ 
           error: "Please wait a few seconds before submitting again.",
           retryAfter: 5
@@ -1270,7 +1212,7 @@ export async function registerRoutes(
       
       // ============ SECURITY: Request deduplication ============
       const dedupeHash = generateRequestHash(req.user.id, 'quiz_submit', req.params.quizId, JSON.stringify(req.body.answers || {}));
-      if (isDuplicateRequest(dedupeHash, 10000)) {
+      if (await isDuplicateRequest(dedupeHash, 10000)) {
         return res.status(429).json({ 
           error: "Duplicate submission detected. Please wait.",
           retryAfter: 10
@@ -1749,6 +1691,39 @@ export async function registerRoutes(
     }
   });
 
+  // Generate nonce for claim challenge-response
+  app.post("/api/rewards/:rewardId/nonce", rateLimitMiddleware('rewards'), authMiddleware, async (req: any, res) => {
+    try {
+      const { rewardId } = req.params;
+      
+      // Verify reward exists and belongs to user
+      const rewards = await storage.getRewardsByUser(req.user.id);
+      const reward = rewards.find(r => r.id === rewardId);
+      
+      if (!reward) {
+        return res.status(404).json({ error: "Reward not found" });
+      }
+      
+      if (reward.status === 'confirmed') {
+        return res.status(400).json({ error: "Reward already claimed" });
+      }
+      
+      // Generate nonce for this claim
+      const nonce = await generateClaimNonce(req.user.id, rewardId);
+      const timestamp = Date.now();
+      
+      res.json({
+        nonce,
+        timestamp,
+        message: `Claim reward ${rewardId} from BMT University. Nonce: ${nonce}. Timestamp: ${timestamp}`,
+        expiresIn: 60 // 60 seconds for replay resistance
+      });
+    } catch (error) {
+      console.error("Error generating claim nonce:", error);
+      res.status(500).json({ error: "Failed to generate claim nonce" });
+    }
+  });
+
   // Daily payout limit per wallet (50,000 BMT)
   const DAILY_PAYOUT_LIMIT_BMT = 50000;
   
@@ -1832,7 +1807,7 @@ export async function registerRoutes(
       }
       
       // ============ SECURITY: Per-user throttle for claims ============
-      if (!checkUserThrottle(req.user.id, 'reward_claim', 10000)) {
+      if (!(await checkUserThrottle(req.user.id, 'reward_claim', 10000))) {
         return res.status(429).json({ 
           error: "Please wait before claiming another reward.",
           retryAfter: 10
@@ -1841,7 +1816,7 @@ export async function registerRoutes(
       
       // ============ SECURITY: Deduplication for claims ============
       const dedupeHash = generateRequestHash(req.user.id, 'reward_claim', rewardId);
-      if (isDuplicateRequest(dedupeHash, 15000)) {
+      if (await isDuplicateRequest(dedupeHash, 15000)) {
         return res.status(429).json({ 
           error: "Claim already processing. Please wait.",
           retryAfter: 15
@@ -3233,7 +3208,7 @@ export async function registerRoutes(
       const { code } = req.body;
       
       // ============ SECURITY: Per-user throttle for referral applications ============
-      if (!checkUserThrottle(req.user.id, 'referral_apply', 60000)) {
+      if (!(await checkUserThrottle(req.user.id, 'referral_apply', 60000))) {
         return res.status(429).json({ 
           error: "Please wait before trying to apply another referral code.",
           retryAfter: 60
@@ -3242,7 +3217,7 @@ export async function registerRoutes(
       
       // ============ SECURITY: Deduplication ============
       const dedupeHash = generateRequestHash(req.user.id, 'referral_apply', code);
-      if (isDuplicateRequest(dedupeHash, 10000)) {
+      if (await isDuplicateRequest(dedupeHash, 10000)) {
         return res.status(429).json({ 
           error: "Request already processing. Please wait.",
           retryAfter: 10

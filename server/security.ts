@@ -1050,3 +1050,57 @@ export async function getSuspiciousIps(): Promise<typeof ipReputationCache.$infe
     .where(sql`${ipReputationCache.riskLevel} IN ('medium', 'high', 'blocked')`)
     .orderBy(desc(ipReputationCache.fraudScore));
 }
+
+// ============ DATA RETENTION POLICIES ============
+// Configurable retention periods for security data
+
+const DATA_RETENTION_DAYS = {
+  velocityTracking: 7,       // Wallet creation velocity records
+  ipReputationCache: 30,     // IP reputation cache
+  courseCompletionVelocity: 90,  // Course completion velocity
+  postPayoutTracking: 90,    // Post-payout monitoring data
+};
+
+export async function cleanupExpiredSecurityData(): Promise<{
+  velocityDeleted: number;
+  ipCacheDeleted: number;
+  completionVelocityDeleted: number;
+}> {
+  const now = new Date();
+  
+  // Cleanup velocity tracking (7 days old)
+  const velocityCutoff = new Date(now.getTime() - DATA_RETENTION_DAYS.velocityTracking * 24 * 60 * 60 * 1000);
+  const velocityResult = await db.delete(securityVelocityTracking)
+    .where(sql`${securityVelocityTracking.createdAt} < ${velocityCutoff}`);
+  
+  // Cleanup expired IP reputation cache
+  const ipCacheCutoff = new Date(now.getTime() - DATA_RETENTION_DAYS.ipReputationCache * 24 * 60 * 60 * 1000);
+  const ipResult = await db.delete(ipReputationCache)
+    .where(sql`${ipReputationCache.checkedAt} < ${ipCacheCutoff} OR ${ipReputationCache.expiresAt} < ${now}`);
+  
+  // Cleanup old course completion velocity (90 days)
+  const completionCutoff = new Date(now.getTime() - DATA_RETENTION_DAYS.courseCompletionVelocity * 24 * 60 * 60 * 1000);
+  const completionResult = await db.delete(courseCompletionVelocity)
+    .where(sql`${courseCompletionVelocity.createdAt} < ${completionCutoff}`);
+  
+  return {
+    velocityDeleted: 0, // Can't get count from drizzle delete
+    ipCacheDeleted: 0,
+    completionVelocityDeleted: 0,
+  };
+}
+
+// Run data retention cleanup periodically (every 6 hours)
+setInterval(async () => {
+  try {
+    const result = await cleanupExpiredSecurityData();
+    console.log('[Security] Data retention cleanup completed:', result);
+  } catch (error) {
+    console.error('[Security] Data retention cleanup failed:', error);
+  }
+}, 6 * 60 * 60 * 1000);
+
+// Export retention config for admin visibility
+export function getDataRetentionConfig() {
+  return DATA_RETENTION_DAYS;
+}

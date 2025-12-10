@@ -739,3 +739,56 @@ export const ipReputationCache = pgTable("ip_reputation_cache", {
 });
 
 export type IpReputationCache = typeof ipReputationCache.$inferSelect;
+
+// ============ DURABLE RATE LIMITING ============
+// PostgreSQL-backed rate limiting that persists across restarts
+export const rateLimitStore = pgTable("rate_limit_store", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: varchar("key", { length: 255 }).notNull().unique(), // e.g., "auth:192.168.1.1" or "rewards:user123"
+  limitType: varchar("limit_type", { length: 50 }).notNull(), // 'auth', 'quiz', 'rewards', etc.
+  requestCount: integer("request_count").notNull().default(1),
+  windowStart: timestamp("window_start").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type RateLimitStore = typeof rateLimitStore.$inferSelect;
+
+// ============ USER ACTION THROTTLING ============
+// Per-user action throttling with durable storage
+export const userThrottleStore = pgTable("user_throttle_store", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: varchar("key", { length: 255 }).notNull().unique(), // "userId:action"
+  lastActionAt: timestamp("last_action_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export type UserThrottleStore = typeof userThrottleStore.$inferSelect;
+
+// ============ REQUEST DEDUPLICATION ============
+// Prevent replay attacks with durable dedup store
+export const requestDedupeStore = pgTable("request_dedupe_store", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestHash: varchar("request_hash", { length: 255 }).notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export type RequestDedupeStore = typeof requestDedupeStore.$inferSelect;
+
+// ============ CLAIM NONCES ============
+// Nonce-based challenge-response for reward claims
+export const claimNonces = pgTable("claim_nonces", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  nonce: varchar("nonce", { length: 64 }).notNull().unique(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  rewardId: varchar("reward_id").notNull(),
+  purpose: varchar("purpose", { length: 50 }).notNull().default('reward_claim'),
+  isUsed: boolean("is_used").notNull().default(false),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(), // Short-lived, e.g., 5 minutes
+});
+
+export type ClaimNonce = typeof claimNonces.$inferSelect;
