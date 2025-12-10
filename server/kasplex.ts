@@ -1,4 +1,7 @@
 import { ethers } from 'ethers';
+import { db } from "./db";
+import { paymasterAuditLog, paymasterCircuitBreaker } from "@shared/schema";
+import { desc, gte } from "drizzle-orm";
 
 // Network configuration - toggle between testnet and mainnet
 // Default to mainnet for production use with real BMT token
@@ -967,6 +970,312 @@ export async function getCurrentBlockNumber(): Promise<number> {
     console.error('Error getting block number:', error);
     return 0;
   }
+}
+
+// ============ PAYMASTER SECURITY MODULE ============
+// Implements per-transaction caps, audit logging, circuit breaker, and low balance alerts
+
+// Security configuration
+const PAYMASTER_SECURITY = {
+  MAX_SINGLE_PAYOUT_BMT: 50000, // Max 50,000 BMT per single transaction
+  CIRCUIT_BREAKER_THRESHOLD: 20, // Trip if 20+ payouts in 1 minute
+  LOW_BALANCE_ALERT_BMT: 100000, // Alert when treasury drops below 100k BMT
+  CRITICAL_BALANCE_BMT: 10000, // Critical alert below 10k BMT
+};
+
+// Log a paymaster operation
+export async function logPaymasterOperation(
+  operation: string,
+  status: 'success' | 'failed' | 'blocked' | 'pending',
+  details: {
+    toAddress?: string;
+    amount?: string;
+    amountFormatted?: string;
+    txHash?: string;
+    errorMessage?: string;
+    rewardId?: string;
+    userId?: string;
+    ipAddress?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<void> {
+  try {
+    await db.insert(paymasterAuditLog).values({
+      operation,
+      status,
+      toAddress: details.toAddress,
+      amount: details.amount,
+      amountFormatted: details.amountFormatted,
+      txHash: details.txHash,
+      errorMessage: details.errorMessage,
+      rewardId: details.rewardId,
+      userId: details.userId,
+      ipAddress: details.ipAddress,
+      metadata: details.metadata,
+    });
+  } catch (error) {
+    console.error('[Paymaster Audit] Failed to log operation:', error);
+  }
+}
+
+// Check if circuit breaker is tripped
+export async function isCircuitBreakerTripped(): Promise<{ tripped: boolean; reason?: string }> {
+  try {
+    const [state] = await db.select().from(paymasterCircuitBreaker).limit(1);
+    
+    if (state?.isTripped) {
+      return { tripped: true, reason: state.tripReason || 'Circuit breaker is active' };
+    }
+    
+    // Check burst activity (payouts in last minute)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentPayouts = await db.select()
+      .from(paymasterAuditLog)
+      .where(gte(paymasterAuditLog.createdAt, oneMinuteAgo));
+    
+    const successfulPayouts = recentPayouts.filter(p => 
+      p.operation === 'transfer' && p.status === 'success'
+    );
+    
+    if (successfulPayouts.length >= PAYMASTER_SECURITY.CIRCUIT_BREAKER_THRESHOLD) {
+      // Auto-trip the circuit breaker
+      await tripCircuitBreaker('auto', `Burst activity detected: ${successfulPayouts.length} payouts in last minute`);
+      return { tripped: true, reason: 'Automatic circuit breaker: unusual payout velocity' };
+    }
+    
+    return { tripped: false };
+  } catch (error) {
+    console.error('[Paymaster] Circuit breaker check failed:', error);
+    return { tripped: false }; // Fail open to not block legitimate payouts
+  }
+}
+
+// Trip the circuit breaker
+export async function tripCircuitBreaker(by: 'auto' | 'admin' | 'low_balance', reason: string): Promise<void> {
+  console.log(`[Paymaster] CIRCUIT BREAKER TRIPPED by ${by}: ${reason}`);
+  
+  try {
+    const existing = await db.select().from(paymasterCircuitBreaker).limit(1);
+    
+    if (existing.length === 0) {
+      await db.insert(paymasterCircuitBreaker).values({
+        isTripped: true,
+        tripReason: reason,
+        trippedAt: new Date(),
+        trippedBy: by,
+        updatedAt: new Date(),
+      });
+    } else {
+      await db.update(paymasterCircuitBreaker)
+        .set({
+          isTripped: true,
+          tripReason: reason,
+          trippedAt: new Date(),
+          trippedBy: by,
+          updatedAt: new Date(),
+        });
+    }
+    
+    await logPaymasterOperation('circuit_breaker_trip', 'success', {
+      metadata: { reason, trippedBy: by }
+    });
+  } catch (error) {
+    console.error('[Paymaster] Failed to trip circuit breaker:', error);
+  }
+}
+
+// Reset the circuit breaker (admin only)
+export async function resetCircuitBreaker(): Promise<void> {
+  console.log('[Paymaster] Circuit breaker RESET');
+  
+  try {
+    await db.update(paymasterCircuitBreaker)
+      .set({
+        isTripped: false,
+        tripReason: null,
+        resetAt: new Date(),
+        updatedAt: new Date(),
+      });
+    
+    await logPaymasterOperation('circuit_breaker_reset', 'success', {});
+  } catch (error) {
+    console.error('[Paymaster] Failed to reset circuit breaker:', error);
+  }
+}
+
+// Validate payout before processing
+export async function validatePayout(
+  amountBmt: number,
+  toAddress: string,
+  rewardId?: string,
+  userId?: string,
+  ipAddress?: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  // Check per-transaction cap
+  if (amountBmt > PAYMASTER_SECURITY.MAX_SINGLE_PAYOUT_BMT) {
+    await logPaymasterOperation('transfer', 'blocked', {
+      toAddress,
+      amountFormatted: `${amountBmt} BMT`,
+      rewardId,
+      userId,
+      ipAddress,
+      errorMessage: `Exceeds max single payout: ${amountBmt} > ${PAYMASTER_SECURITY.MAX_SINGLE_PAYOUT_BMT}`,
+    });
+    return { 
+      allowed: false, 
+      reason: `Payout exceeds maximum single transaction limit of ${PAYMASTER_SECURITY.MAX_SINGLE_PAYOUT_BMT} BMT` 
+    };
+  }
+  
+  // Check circuit breaker
+  const circuitBreaker = await isCircuitBreakerTripped();
+  if (circuitBreaker.tripped) {
+    await logPaymasterOperation('transfer', 'blocked', {
+      toAddress,
+      amountFormatted: `${amountBmt} BMT`,
+      rewardId,
+      userId,
+      ipAddress,
+      errorMessage: `Circuit breaker: ${circuitBreaker.reason}`,
+    });
+    return { allowed: false, reason: circuitBreaker.reason };
+  }
+  
+  return { allowed: true };
+}
+
+// Check treasury balance and alert if low
+export async function checkTreasuryBalance(): Promise<{
+  balance: string;
+  balanceBmt: number;
+  status: 'healthy' | 'low' | 'critical';
+}> {
+  try {
+    const BMT_CONTRACT = process.env.BMT_TOKEN_CONTRACT || '0x38e29a858977a5cF82E2bf28f6302C7775700D94';
+    const paymasterAddress = getPaymasterWalletAddress();
+    
+    if (!paymasterAddress) {
+      return { balance: '0', balanceBmt: 0, status: 'critical' };
+    }
+    
+    const balanceResult = await getERC20Balance(paymasterAddress, BMT_CONTRACT);
+    const balanceStr = balanceResult?.balance || '0';
+    const balanceBmt = parseFloat(balanceStr) / 1e18;
+    
+    let status: 'healthy' | 'low' | 'critical' = 'healthy';
+    
+    if (balanceBmt < PAYMASTER_SECURITY.CRITICAL_BALANCE_BMT) {
+      status = 'critical';
+      console.log(`[Paymaster] CRITICAL: Treasury balance is ${balanceBmt} BMT`);
+      await tripCircuitBreaker('low_balance', `Critical balance: ${balanceBmt} BMT`);
+    } else if (balanceBmt < PAYMASTER_SECURITY.LOW_BALANCE_ALERT_BMT) {
+      status = 'low';
+      console.log(`[Paymaster] WARNING: Treasury balance is low: ${balanceBmt} BMT`);
+    }
+    
+    // Update circuit breaker state with balance info
+    try {
+      const existing = await db.select().from(paymasterCircuitBreaker).limit(1);
+      if (existing.length === 0) {
+        await db.insert(paymasterCircuitBreaker).values({
+          lastBalanceCheck: balanceStr,
+          lastBalanceCheckAt: new Date(),
+          updatedAt: new Date(),
+        });
+      } else {
+        await db.update(paymasterCircuitBreaker).set({
+          lastBalanceCheck: balanceStr,
+          lastBalanceCheckAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    } catch (e) {
+      // Ignore update errors
+    }
+    
+    return { balance: balanceStr, balanceBmt, status };
+  } catch (error) {
+    console.error('[Paymaster] Balance check failed:', error);
+    return { balance: '0', balanceBmt: 0, status: 'critical' };
+  }
+}
+
+// Get paymaster security stats for admin dashboard
+export async function getPaymasterSecurityStats(): Promise<{
+  circuitBreakerTripped: boolean;
+  tripReason?: string;
+  payoutsLastMinute: number;
+  payoutsLastHour: number;
+  payoutsLast24Hours: number;
+  totalPayoutsBmt24Hours: number;
+  treasuryBalance: number;
+  treasuryStatus: 'healthy' | 'low' | 'critical';
+  recentOperations: typeof paymasterAuditLog.$inferSelect[];
+}> {
+  try {
+    const circuitBreaker = await isCircuitBreakerTripped();
+    const treasury = await checkTreasuryBalance();
+    
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    const recentOps = await db.select()
+      .from(paymasterAuditLog)
+      .where(gte(paymasterAuditLog.createdAt, oneDayAgo))
+      .orderBy(desc(paymasterAuditLog.createdAt))
+      .limit(100);
+    
+    const successfulTransfers = recentOps.filter(op => 
+      op.operation === 'transfer' && op.status === 'success'
+    );
+    
+    const payoutsLastMinute = successfulTransfers.filter(op => 
+      new Date(op.createdAt!) >= oneMinuteAgo
+    ).length;
+    
+    const payoutsLastHour = successfulTransfers.filter(op => 
+      new Date(op.createdAt!) >= oneHourAgo
+    ).length;
+    
+    const totalPayoutsBmt24Hours = successfulTransfers.reduce((sum, op) => {
+      if (op.amountFormatted) {
+        const match = op.amountFormatted.match(/[\d.]+/);
+        return sum + (match ? parseFloat(match[0]) : 0);
+      }
+      return sum;
+    }, 0);
+    
+    return {
+      circuitBreakerTripped: circuitBreaker.tripped,
+      tripReason: circuitBreaker.reason,
+      payoutsLastMinute,
+      payoutsLastHour,
+      payoutsLast24Hours: successfulTransfers.length,
+      totalPayoutsBmt24Hours: Math.round(totalPayoutsBmt24Hours),
+      treasuryBalance: treasury.balanceBmt,
+      treasuryStatus: treasury.status,
+      recentOperations: recentOps.slice(0, 20),
+    };
+  } catch (error) {
+    console.error('[Paymaster] Failed to get stats:', error);
+    return {
+      circuitBreakerTripped: false,
+      payoutsLastMinute: 0,
+      payoutsLastHour: 0,
+      payoutsLast24Hours: 0,
+      totalPayoutsBmt24Hours: 0,
+      treasuryBalance: 0,
+      treasuryStatus: 'critical',
+      recentOperations: [],
+    };
+  }
+}
+
+// Export security config for admin visibility
+export function getPaymasterSecurityConfig() {
+  return PAYMASTER_SECURITY;
 }
 
 export { KASPLEX_EVM_RPC, KASPLEX_CHAIN_ID };

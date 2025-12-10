@@ -792,3 +792,40 @@ export const claimNonces = pgTable("claim_nonces", {
 });
 
 export type ClaimNonce = typeof claimNonces.$inferSelect;
+
+// ============ PAYMASTER AUDIT LOG ============
+// Track all paymaster operations for security auditing
+export const paymasterAuditLog = pgTable("paymaster_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  operation: varchar("operation", { length: 50 }).notNull(), // 'transfer', 'balance_check', 'circuit_breaker_trip', etc.
+  toAddress: varchar("to_address", { length: 100 }),
+  amount: varchar("amount", { length: 100 }), // In wei/smallest unit
+  amountFormatted: varchar("amount_formatted", { length: 100 }), // Human-readable
+  txHash: varchar("tx_hash", { length: 100 }),
+  status: varchar("status", { length: 20 }).notNull(), // 'success', 'failed', 'blocked', 'pending'
+  errorMessage: text("error_message"),
+  rewardId: varchar("reward_id"),
+  userId: varchar("user_id"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type PaymasterAuditLog = typeof paymasterAuditLog.$inferSelect;
+
+// ============ PAYMASTER CIRCUIT BREAKER ============
+// Track paymaster health and circuit breaker state
+export const paymasterCircuitBreaker = pgTable("paymaster_circuit_breaker", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  isTripped: boolean("is_tripped").notNull().default(false),
+  tripReason: text("trip_reason"),
+  trippedAt: timestamp("tripped_at"),
+  trippedBy: varchar("tripped_by", { length: 50 }), // 'auto', 'admin', 'low_balance'
+  resetAt: timestamp("reset_at"),
+  payoutsInLastMinute: integer("payouts_in_last_minute").notNull().default(0),
+  payoutsInLastHour: integer("payouts_in_last_hour").notNull().default(0),
+  lastPayoutAt: timestamp("last_payout_at"),
+  lastBalanceCheck: varchar("last_balance_check", { length: 100 }),
+  lastBalanceCheckAt: timestamp("last_balance_check_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
