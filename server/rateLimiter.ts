@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { rateLimitStore, userThrottleStore, requestDedupeStore, claimNonces } from "@shared/schema";
-import { eq, lt, and } from "drizzle-orm";
+import { eq, lt, and, gt } from "drizzle-orm";
 import { randomBytes } from "crypto";
 
 const RATE_LIMITS = {
@@ -154,34 +154,46 @@ export async function validateAndConsumeNonce(
   const now = new Date();
   
   try {
-    const [existing] = await db.select()
-      .from(claimNonces)
-      .where(eq(claimNonces.nonce, nonce))
-      .limit(1);
-    
-    if (!existing) {
-      return { valid: false, reason: 'Invalid nonce' };
-    }
-    
-    if (existing.userId !== userId) {
-      return { valid: false, reason: 'Nonce belongs to different user' };
-    }
-    
-    if (existing.rewardId !== rewardId) {
-      return { valid: false, reason: 'Nonce belongs to different reward' };
-    }
-    
-    if (existing.isUsed) {
-      return { valid: false, reason: 'Nonce already used' };
-    }
-    
-    if (now > new Date(existing.expiresAt)) {
-      return { valid: false, reason: 'Nonce expired' };
-    }
-    
-    await db.update(claimNonces)
+    // SECURITY FIX: Use atomic UPDATE with all conditions to prevent race condition (TOCTOU)
+    // This ensures only ONE concurrent request can successfully consume the nonce
+    const result = await db.update(claimNonces)
       .set({ isUsed: true, usedAt: now })
-      .where(eq(claimNonces.nonce, nonce));
+      .where(
+        and(
+          eq(claimNonces.nonce, nonce),
+          eq(claimNonces.userId, userId),
+          eq(claimNonces.rewardId, rewardId),
+          eq(claimNonces.isUsed, false),
+          gt(claimNonces.expiresAt, now)
+        )
+      )
+      .returning();
+    
+    if (result.length === 0) {
+      // Nonce was either invalid, expired, wrong user/reward, or already consumed
+      // Check why it failed for better error messaging
+      const [existing] = await db.select()
+        .from(claimNonces)
+        .where(eq(claimNonces.nonce, nonce))
+        .limit(1);
+      
+      if (!existing) {
+        return { valid: false, reason: 'Invalid nonce' };
+      }
+      if (existing.isUsed) {
+        return { valid: false, reason: 'Nonce already used' };
+      }
+      if (existing.userId !== userId) {
+        return { valid: false, reason: 'Nonce belongs to different user' };
+      }
+      if (existing.rewardId !== rewardId) {
+        return { valid: false, reason: 'Nonce belongs to different reward' };
+      }
+      if (now > new Date(existing.expiresAt)) {
+        return { valid: false, reason: 'Nonce expired' };
+      }
+      return { valid: false, reason: 'Nonce validation failed' };
+    }
     
     return { valid: true };
   } catch (error) {
