@@ -4,15 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken, setWalletAddress } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Play, Wallet, LogOut, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Play, Wallet, LogOut, AlertCircle } from 'lucide-react';
 import type { User } from '@shared/schema';
 import { kasplexL2 } from '@/lib/wagmi';
 
@@ -46,33 +38,11 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [isVerifyingSession, setIsVerifyingSession] = useState(false);
-  const [vpnDetected, setVpnDetected] = useState(false);
-  const [showVpnWarning, setShowVpnWarning] = useState(false);
-  const [vpnCheckDone, setVpnCheckDone] = useState(false);
   const { toast } = useToast();
   
   const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
   const { connect, connectors, isPending } = useConnect();
-
-  // Check VPN status on mount
-  useEffect(() => {
-    const checkVpnStatus = async () => {
-      try {
-        const res = await fetch('/api/check-vpn');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.isVpn || data.isProxy) {
-            setVpnDetected(true);
-          }
-        }
-      } catch (e) {
-        // Silently fail - don't block users if check fails
-      }
-      setVpnCheckDone(true);
-    };
-    checkVpnStatus();
-  }, []);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -370,17 +340,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     );
   }
 
-  const handleConnectClick = () => {
-    // If VPN detected, show warning first
-    if (vpnDetected && vpnCheckDone) {
-      setShowVpnWarning(true);
-      return;
-    }
-    proceedWithConnect();
-  };
-
-  const proceedWithConnect = () => {
-    setShowVpnWarning(false);
+  const handleConnect = () => {
     const injectedConnector = connectors.find(c => c.id === 'injected');
     if (injectedConnector) {
       connect({ connector: injectedConnector });
@@ -407,48 +367,18 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const isWrongNetwork = chain && chain.id !== kasplexL2.id;
 
   return (
-    <>
-      <Dialog open={showVpnWarning} onOpenChange={setShowVpnWarning}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-500">
-              <ShieldAlert className="h-5 w-5" />
-              VPN Detected
-            </DialogTitle>
-            <DialogDescription className="text-left pt-2">
-              We detected that you may be using a VPN or proxy. To prevent your account from being flagged for suspicious activity, please disable your VPN before connecting your wallet.
-              <br /><br />
-              <span className="text-muted-foreground text-sm">
-                Note: Connecting while on a VPN may result in restrictions on claiming rewards.
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowVpnWarning(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={proceedWithConnect}
-              className="bg-amber-500 hover:bg-amber-600 text-background"
-            >
-              Connect Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <div data-testid="wallet-connect-container" className="flex items-center gap-2">
-        {!isConnected ? (
-          <Button
-            onClick={handleConnectClick}
-            disabled={isPending}
-            className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
-            data-testid="button-connect-wallet"
-          >
-            <Wallet className="h-4 w-4 mr-2" />
-            {isPending ? 'Connecting...' : 'Connect Wallet'}
-          </Button>
-        ) : isWrongNetwork ? (
+    <div data-testid="wallet-connect-container" className="flex items-center gap-2">
+      {!isConnected ? (
+        <Button
+          onClick={handleConnect}
+          disabled={isPending}
+          className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
+          data-testid="button-connect-wallet"
+        >
+          <Wallet className="h-4 w-4 mr-2" />
+          {isPending ? 'Connecting...' : 'Connect Wallet'}
+        </Button>
+      ) : isWrongNetwork ? (
         <Button
           variant="destructive"
           data-testid="button-wrong-network"
@@ -475,19 +405,18 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
         </div>
       )}
       
-        {!isAuthenticated && !isConnected && (
-          <Button
-            variant="outline"
-            onClick={handleDemoConnect}
-            disabled={isAuthenticating}
-            data-testid="button-demo-connect"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            {isAuthenticating ? 'Loading...' : 'Try Demo'}
-          </Button>
-        )}
-      </div>
-    </>
+      {!isAuthenticated && !isConnected && (
+        <Button
+          variant="outline"
+          onClick={handleDemoConnect}
+          disabled={isAuthenticating}
+          data-testid="button-demo-connect"
+          className="flex items-center gap-2"
+        >
+          <Play className="h-4 w-4" />
+          {isAuthenticating ? 'Loading...' : 'Try Demo'}
+        </Button>
+      )}
+    </div>
   );
 }
