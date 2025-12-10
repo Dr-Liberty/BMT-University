@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Clock, Users, Star, BookOpen, CheckCircle } from 'lucide-react';
+import { Link } from 'wouter';
 import type { Course as APICourse } from '@shared/schema';
 
 export interface CourseDisplay {
@@ -62,29 +63,30 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
       className="bg-card border-border hover:border-kaspa-cyan/50 transition-all group overflow-visible flex flex-col h-full"
       data-testid={`card-course-${course.id}`}
     >
-      <div className="relative aspect-video bg-muted rounded-t-md overflow-hidden">
-        {course.thumbnail ? (
-          <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-kaspa-cyan/20 to-bmt-orange/20">
-            <BookOpen className="w-12 h-12 text-muted-foreground" />
-          </div>
-        )}
-        <Badge 
-          className={`absolute top-3 right-3 ${difficultyClass}`}
-          data-testid={`badge-difficulty-${course.id}`}
-        >
-          {capitalizeFirst(difficulty)}
-        </Badge>
-        <Badge className="absolute top-3 left-3 bg-background/80 backdrop-blur text-foreground">
-          {capitalizeFirst(category)}
-        </Badge>
-      </div>
+      <Link href={`/course/${course.id}`} className="block cursor-pointer">
+        <div className="relative aspect-video bg-muted rounded-t-md overflow-hidden">
+          {course.thumbnail ? (
+            <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-kaspa-cyan/20 to-bmt-orange/20">
+              <BookOpen className="w-12 h-12 text-muted-foreground" />
+            </div>
+          )}
+          <Badge 
+            className={`absolute top-3 right-3 ${difficultyClass}`}
+            data-testid={`badge-difficulty-${course.id}`}
+          >
+            {capitalizeFirst(difficulty)}
+          </Badge>
+          <Badge className="absolute top-3 left-3 bg-background/80 backdrop-blur text-foreground">
+            {capitalizeFirst(category)}
+          </Badge>
+        </div>
 
-      <CardContent className="p-4 flex-1 flex flex-col">
-        <h3 className="font-heading font-semibold text-lg text-white mb-2 line-clamp-2 group-hover:text-kaspa-cyan transition-colors" data-testid={`text-course-title-${course.id}`}>
-          {course.title}
-        </h3>
+        <CardContent className="p-4 flex-1 flex flex-col">
+          <h3 className="font-heading font-semibold text-lg text-white mb-2 line-clamp-2 group-hover:text-kaspa-cyan transition-colors" data-testid={`text-course-title-${course.id}`}>
+            {course.title}
+          </h3>
         <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-1">
           {course.shortDescription || course.description}
         </p>
@@ -116,7 +118,8 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
             <Progress value={course.progress} className="h-2" />
           </div>
         )}
-      </CardContent>
+        </CardContent>
+      </Link>
 
       <CardFooter className="p-4 pt-0 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
