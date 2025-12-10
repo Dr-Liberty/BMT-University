@@ -166,9 +166,9 @@ export async function submitTransferERC20(
     // Get nonce using raw RPC call
     const nonce = await getRawNonce(walletAddress);
     
-    // Gas multiplier: 4x base + 1x per retry attempt
-    // Attempt 0: 4x (~8000 gwei, ~0.8 KAS), Attempt 1: 5x (~10000 gwei, ~1 KAS), etc.
-    const gasMultiplier = BigInt(4 + retryAttempt);
+    // Gas multiplier: 8x base + 2x per retry attempt (more aggressive for reliability)
+    // Attempt 0: 8x (~16000 gwei, ~1.6 KAS), Attempt 1: 10x (~20000 gwei, ~2 KAS), etc.
+    const gasMultiplier = BigInt(8 + retryAttempt * 2);
     const networkGasPrice = await getNetworkGasPrice();
     const gasPrice = networkGasPrice * gasMultiplier;
     console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei (${gasMultiplier}x), nonce: ${nonce}`);
@@ -436,7 +436,8 @@ export async function transferERC20(
     
     // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
     // Limited to 3 attempts to fit within browser timeout (~45s total)
-    const gasMultipliers = [3n, 6n, 10n];
+    // More aggressive multipliers for reliability: 8x, 12x, 16x
+    const gasMultipliers = [8n, 12n, 16n];
     
     for (let i = 0; i < gasMultipliers.length; i++) {
       const result = await attemptTransfer(
