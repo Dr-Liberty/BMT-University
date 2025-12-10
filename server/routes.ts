@@ -1927,7 +1927,7 @@ export async function registerRoutes(
         });
       }
       
-      console.log(`[Claim] Transaction broadcast: ${result.txHash}, attempt ${currentAttempt + 1} (gas ${4 + currentAttempt}x), starting background confirmation...`);
+      console.log(`[Claim] Transaction broadcast: ${result.txHash}, attempt ${currentAttempt + 1} (gas ${8 + currentAttempt * 2}x), starting background confirmation...`);
       
       // Return immediately with 202 Accepted - confirmation happens async
       res.status(202).json({
@@ -1937,9 +1937,9 @@ export async function registerRoutes(
         txHash: result.txHash,
       });
       
-      // Background confirmation polling (non-blocking)
+      // Background confirmation polling (non-blocking) - 5 minutes to handle slow confirmations
       (async () => {
-        const maxPolls = 120; // 2 minutes max
+        const maxPolls = 300; // 5 minutes max (was 2 minutes)
         for (let i = 0; i < maxPolls; i++) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           
