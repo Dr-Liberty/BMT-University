@@ -2113,6 +2113,31 @@ export async function registerRoutes(
     }
   });
 
+  // ============ PUBLIC VPN CHECK (Pre-connect warning) ============
+  app.get("/api/check-vpn", rateLimitMiddleware('general'), async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+      
+      // Don't check localhost/dev IPs
+      if (clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === 'unknown') {
+        return res.json({ isVpn: false, isProxy: false });
+      }
+      
+      const { checkIpReputation } = await import('./security');
+      const result = await checkIpReputation(clientIp);
+      
+      res.json({
+        isVpn: result.isVpn || false,
+        isProxy: result.isProxy || false,
+        riskLevel: result.riskLevel || 'low',
+      });
+    } catch (error) {
+      console.error("Error checking VPN status:", error);
+      // On error, don't block the user - just return safe defaults
+      res.json({ isVpn: false, isProxy: false });
+    }
+  });
+
   app.get("/api/analytics/leaderboard", async (req, res) => {
     try {
       const courses = await storage.getAllCourses({ isPublished: true });

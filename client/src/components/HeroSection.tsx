@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BookOpen, Award, Coins, CheckCircle } from 'lucide-react';
+import { BookOpen, Award, Coins, CheckCircle, ShieldAlert } from 'lucide-react';
 import { Link } from 'wouter';
 import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 
@@ -52,7 +52,7 @@ export default function HeroSection() {
           Complete lessons, pass quizzes, and earn <span className="text-bmt-orange font-semibold">$BMT tokens</span> on the Kaspa network.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
           <Link href="/courses">
             <Button
               size="lg"
@@ -73,6 +73,13 @@ export default function HeroSection() {
               Dashboard
             </Button>
           </Link>
+        </div>
+
+        <div className="flex items-center justify-center gap-2 mb-16 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-lg max-w-lg mx-auto" data-testid="notice-vpn-warning">
+          <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
+          <p className="text-sm text-amber-200">
+            <span className="font-semibold">Important:</span> Please disable your VPN before connecting your wallet. VPN usage may flag your account.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
