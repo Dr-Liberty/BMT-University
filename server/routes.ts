@@ -1937,9 +1937,9 @@ export async function registerRoutes(
         txHash: result.txHash,
       });
       
-      // Background confirmation polling (non-blocking) - 5 minutes to handle slow confirmations
+      // Background confirmation polling (non-blocking)
       (async () => {
-        const maxPolls = 300; // 5 minutes max (was 2 minutes)
+        const maxPolls = 120; // 2 minutes max
         for (let i = 0; i < maxPolls; i++) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           
