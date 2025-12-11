@@ -69,6 +69,11 @@ export default function Footer() {
             <h3 className="font-heading font-semibold text-white mb-4">Resources</h3>
             <ul className="space-y-2">
               <li>
+                <a href="https://kaspa.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
+                  Kaspa.com
+                </a>
+              </li>
+              <li>
                 <a href="https://kaspa.org" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
                   Kaspa.org
                 </a>
