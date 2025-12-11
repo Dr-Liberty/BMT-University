@@ -63,7 +63,7 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
       className="bg-card border-border hover:border-kaspa-cyan/50 transition-all group overflow-visible flex flex-col h-full"
       data-testid={`card-course-${course.id}`}
     >
-      <Link href={`/course/${course.id}`} className="block cursor-pointer">
+      <Link href={`/course/${course.id}`} className="block cursor-pointer flex-1 flex flex-col">
         <div className="relative aspect-video bg-muted rounded-t-md overflow-hidden">
           {course.thumbnail ? (
             <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
