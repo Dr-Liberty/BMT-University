@@ -16,6 +16,18 @@ import {
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { getOutboundTransfers, getCurrentBlockNumber } from './kasplex';
 
+// ============ ANTI-ABUSE POLICY ============
+// IMPORTANT: The following are NOT valid reasons for flagging/blocking wallets:
+// - Completing all courses (we WANT users to complete all courses!)
+// - Having high reward totals from legitimate course completions
+// 
+// Valid reasons for flagging/blocking:
+// - Unrealistically fast course completion (less than 10% of expected time)
+// - Multiple wallets from same device fingerprint (3+ wallets = blocked)
+// - Multiple wallets from same IP (10+ wallets = blocked)
+// - Post-payout dumping to sink addresses
+// - Wallet clustering with known bad actors
+
 // Security thresholds
 const SECURITY_THRESHOLDS = {
   MAX_WALLETS_PER_IP_24H: 3,

@@ -54,7 +54,9 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 *   **Anti-DDoS Protection**: Per-user submission throttling prevents rapid-fire attacks.
 *   **Request Deduplication**: 10-15 second windows prevent replay attacks on sensitive endpoints.
 *   **Error Sanitization**: Production mode hides internal error details from responses.
-*   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 2 wallets per device.
+*   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 3+ wallets per device.
+    - **Policy**: Completing all courses is NOT grounds for flagging - we WANT users to complete courses!
+    - Only flag for: unrealistically fast completion (<10% expected time), 3+ wallets per device, 10+ wallets per IP, post-payout dumping.
 *   **API Pagination**: Courses API supports limit/offset pagination (max 100 per page).
 *   **Frontend Caching**: React Query configured with 2-minute staleTime, 10-minute gcTime, and background refetch on window focus.
 *   **IP Reputation Scoring**: IPQualityScore API integration blocks VPN, Tor, datacenter, and high fraud score IPs from claiming rewards.
