@@ -135,8 +135,13 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/about", async (req, res) => {
+  app.put("/api/about", authMiddleware, async (req: any, res) => {
     try {
+      // Only admins can edit the about page
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
       const result = updateAboutPageSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).message });
