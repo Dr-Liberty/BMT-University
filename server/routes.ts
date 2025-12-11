@@ -366,7 +366,12 @@ export async function registerRoutes(
         const questions = await storage.getQuizQuestions(quiz.id);
         const safeQuestions = questions.map(q => ({
           ...q,
-          options: q.options.map(o => ({ id: o.id, text: o.text })),
+          options: q.options.map((o, idx) => {
+            if (typeof o === 'string') {
+              return { id: String(idx), text: o };
+            }
+            return { id: o.id || String(idx), text: o.text || '' };
+          }),
         }));
         quizWithQuestions = { ...quiz, questions: safeQuestions };
       }
@@ -883,7 +888,12 @@ export async function registerRoutes(
       // Remove correct answers for students (they should be hidden)
       const safeQuestions = questions.map(q => ({
         ...q,
-        options: q.options.map(o => ({ id: o.id, text: o.text })),
+        options: q.options.map((o, idx) => {
+          if (typeof o === 'string') {
+            return { id: String(idx), text: o };
+          }
+          return { id: o.id || String(idx), text: o.text || '' };
+        }),
       }));
       
       res.json({ ...quiz, questions: safeQuestions });
@@ -939,7 +949,12 @@ export async function registerRoutes(
       
       const safeQuestions = questions.map(q => ({
         ...q,
-        options: q.options.map(o => ({ id: o.id, text: o.text })),
+        options: q.options.map((o, idx) => {
+          if (typeof o === 'string') {
+            return { id: String(idx), text: o };
+          }
+          return { id: o.id || String(idx), text: o.text || '' };
+        }),
       }));
       
       res.json({ ...quiz, questions: safeQuestions });
