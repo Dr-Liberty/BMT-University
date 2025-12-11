@@ -116,8 +116,8 @@ export default function Analytics() {
           />
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="bg-card border-border" data-testid="card-leaderboard">
+        <div className="grid lg:grid-cols-2 gap-6 overflow-hidden">
+          <Card className="bg-card border-border overflow-hidden min-w-0" data-testid="card-leaderboard">
             <CardHeader>
               <CardTitle className="font-heading text-xl text-white flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-kaspa-cyan" />
@@ -164,7 +164,7 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border" data-testid="card-activity-feed">
+          <Card className="bg-card border-border overflow-hidden min-w-0" data-testid="card-activity-feed">
             <CardHeader>
               <CardTitle className="font-heading text-xl text-white flex items-center gap-2">
                 <Clock className="w-5 h-5 text-kaspa-cyan" />
