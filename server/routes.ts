@@ -1333,6 +1333,11 @@ export async function registerRoutes(
         );
         if (uniqueWallets.size > 1) {
           suspiciousFlags.push(`fingerprint_multiple_wallets:${uniqueWallets.size}`);
+          // NOTE: Fingerprint collisions are common (same browser + resolution + timezone)
+          // Only flag as HIGH severity at 5+ wallets to avoid false positives
+          // 2-4 wallets = medium (warning only, don't block rewards)
+          // 5+ wallets = high (block rewards, likely farming)
+          const fpSeverity = uniqueWallets.size >= 5 ? 'high' : 'medium';
           await storage.logSuspiciousActivity({
             userId: req.user.id,
             walletAddress: req.user.walletAddress,
@@ -1340,7 +1345,7 @@ export async function registerRoutes(
             ipAddress: clientIp,
             activityType: 'multiple_wallets_same_device',
             description: `Same device fingerprint used by ${uniqueWallets.size} different wallets`,
-            severity: uniqueWallets.size >= 2 ? 'high' : 'medium',
+            severity: fpSeverity,
             courseId: course.id,
             metadata: { wallets: Array.from(uniqueWallets) },
           });
@@ -1355,6 +1360,11 @@ export async function registerRoutes(
         );
         if (uniqueWalletsFromIp.size > 2) {
           suspiciousFlags.push(`ip_multiple_wallets:${uniqueWalletsFromIp.size}`);
+          // NOTE: Shared IPs are common (schools, offices, ISPs with CGNAT, VPNs)
+          // Only flag as HIGH severity at 10+ wallets to avoid false positives
+          // 3-9 wallets = low (monitoring only)
+          // 10+ wallets = high (block rewards, likely coordinated farming)
+          const ipSeverity = uniqueWalletsFromIp.size >= 10 ? 'high' : 'low';
           await storage.logSuspiciousActivity({
             userId: req.user.id,
             walletAddress: req.user.walletAddress,
@@ -1362,7 +1372,7 @@ export async function registerRoutes(
             ipAddress: clientIp,
             activityType: 'multiple_wallets_same_ip',
             description: `Same IP address used by ${uniqueWalletsFromIp.size} different wallets`,
-            severity: uniqueWalletsFromIp.size > 5 ? 'high' : 'low',
+            severity: ipSeverity,
             courseId: course.id,
             metadata: { wallets: Array.from(uniqueWalletsFromIp) },
           });
