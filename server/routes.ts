@@ -1333,11 +1333,10 @@ export async function registerRoutes(
         );
         if (uniqueWallets.size > 1) {
           suspiciousFlags.push(`fingerprint_multiple_wallets:${uniqueWallets.size}`);
-          // NOTE: Fingerprint collisions are common (same browser + resolution + timezone)
-          // Only flag as HIGH severity at 5+ wallets to avoid false positives
-          // 2-4 wallets = medium (warning only, don't block rewards)
-          // 5+ wallets = high (block rewards, likely farming)
-          const fpSeverity = uniqueWallets.size >= 5 ? 'high' : 'medium';
+          // Severity thresholds for fingerprint sharing:
+          // 2 wallets = medium (warning only, don't block rewards)
+          // 3+ wallets = high (block rewards, likely farming)
+          const fpSeverity = uniqueWallets.size >= 3 ? 'high' : 'medium';
           await storage.logSuspiciousActivity({
             userId: req.user.id,
             walletAddress: req.user.walletAddress,
