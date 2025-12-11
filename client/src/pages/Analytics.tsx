@@ -134,23 +134,23 @@ export default function Analytics() {
                   {leaderboard.map((course, index) => (
                     <div 
                       key={course.id}
-                      className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 border border-border"
+                      className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border"
                       data-testid={`row-leaderboard-${course.id}`}
                     >
-                      <div className="w-8 h-8 rounded-full bg-kaspa-cyan/20 flex items-center justify-center text-kaspa-cyan font-bold text-sm">
+                      <div className="w-8 h-8 rounded-full bg-kaspa-cyan/20 flex items-center justify-center text-kaspa-cyan font-bold text-sm shrink-0">
                         {index + 1}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-white truncate">{course.title}</p>
-                        <p className="text-xs text-muted-foreground">{course.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-white">{course.enrollmentCount}</p>
-                        <p className="text-xs text-muted-foreground">students</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-bmt-orange">{formatNumber(course.totalBmtPaid)}</p>
-                        <p className="text-xs text-muted-foreground">$BMT paid</p>
+                        <p className="text-xs text-muted-foreground mb-2">{course.category}</p>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                          <span className="text-muted-foreground">
+                            <span className="font-semibold text-white">{course.enrollmentCount}</span> students
+                          </span>
+                          <span className="text-muted-foreground">
+                            <span className="font-semibold text-bmt-orange">{formatNumber(course.totalBmtPaid)}</span> $BMT
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
