@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
-import { Plus, Trash2, Loader2, Save, ArrowLeft, GripVertical } from 'lucide-react';
-import { Link } from 'wouter';
+import { Plus, Trash2, Loader2, Save, ArrowLeft, GripVertical, ShieldAlert } from 'lucide-react';
+import { Link, useLocation } from 'wouter';
 import type { AboutPage } from '@shared/schema';
+import { getAuthToken } from '@/lib/auth';
 
 const roadmapItemSchema = z.object({
   id: z.string(),
@@ -34,9 +35,21 @@ type AboutFormData = z.infer<typeof aboutFormSchema>;
 export default function AboutEditor() {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [, setLocation] = useLocation();
+  const authToken = getAuthToken();
+
+  // Check if user is admin
+  const { data: currentUser, isLoading: userLoading } = useQuery<{ id: string; walletAddress: string; role: string }>({
+    queryKey: ['/api/auth/me'],
+    enabled: !!authToken,
+    retry: false,
+  });
+
+  const isAdmin = currentUser?.role === 'admin';
 
   const { data: aboutPage, isLoading } = useQuery<AboutPage>({
     queryKey: ['/api/about'],
+    enabled: isAdmin, // Only fetch if admin
   });
 
   const form = useForm<AboutFormData>({
@@ -93,6 +106,38 @@ export default function AboutEditor() {
       targetDate: '',
     });
   };
+
+  // Show loading while checking user role
+  if (userLoading || (authToken && !currentUser)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-20" data-testid="loading-editor">
+        <Loader2 className="w-8 h-8 text-kaspa-cyan animate-spin" />
+      </div>
+    );
+  }
+
+  // Access denied for non-admins
+  if (!authToken || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-20 px-4" data-testid="access-denied">
+        <Card className="max-w-md w-full border-destructive/50">
+          <CardContent className="pt-6 text-center">
+            <ShieldAlert className="w-16 h-16 text-destructive mx-auto mb-4" />
+            <h2 className="font-heading font-bold text-2xl text-white mb-2">Access Denied</h2>
+            <p className="text-muted-foreground mb-6">
+              You must be an administrator to edit the About page.
+            </p>
+            <Link href="/about">
+              <Button variant="outline" className="gap-2">
+                <ArrowLeft className="w-4 h-4" />
+                Back to About Page
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

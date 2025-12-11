@@ -1121,6 +1121,11 @@ export async function registerRoutes(
 
   app.delete("/api/questions/:id", authMiddleware, async (req: any, res) => {
     try {
+      // Only admins can delete questions
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
       await storage.deleteQuizQuestion(req.params.id);
       res.json({ success: true });
     } catch (error) {
