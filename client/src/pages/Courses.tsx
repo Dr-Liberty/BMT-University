@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CourseCard, { CourseDisplay } from '@/components/CourseCard';
 import Footer from '@/components/Footer';
-import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw, Star } from 'lucide-react';
+import { Search, Filter, Sparkles, TrendingUp, Clock, Loader2, AlertCircle, RefreshCw, Star, CheckCircle, PlayCircle, Circle } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { isAuthenticated } from '@/lib/auth';
@@ -29,6 +29,7 @@ interface PaginatedCoursesResponse {
 
 const categories = ['All', 'blockchain', 'development', 'tokenomics', 'trading', 'security'];
 const difficulties = ['All', 'beginner', 'intermediate', 'advanced'];
+const progressStatuses = ['All', 'completed', 'in-progress', 'not-started'];
 
 function mapCourseToDisplay(course: Course, enrollment?: EnrollmentWithQuizStatus): CourseDisplay {
   return {
@@ -54,6 +55,7 @@ export default function Courses() {
   const [searchQuery, setSearchQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [difficulty, setDifficulty] = useState('All');
+  const [progressStatus, setProgressStatus] = useState('All');
   const [filter, setFilter] = useState('all');
   const { toast } = useToast();
 
@@ -105,7 +107,24 @@ export default function Courses() {
                            course.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = category === 'All' || course.category === category;
       const matchesDifficulty = difficulty === 'All' || course.difficulty === difficulty;
-      return matchesSearch && matchesCategory && matchesDifficulty;
+      
+      let matchesProgress = true;
+      if (progressStatus !== 'All') {
+        const enrollment = enrollmentMap.get(course.id);
+        const isEnrolled = !!enrollment;
+        const progress = Number(enrollment?.progress ?? 0);
+        const isCompleted = enrollment?.quizPassed === true || progress >= 100;
+        
+        if (progressStatus === 'completed') {
+          matchesProgress = isCompleted;
+        } else if (progressStatus === 'in-progress') {
+          matchesProgress = isEnrolled && progress > 0 && !isCompleted;
+        } else if (progressStatus === 'not-started') {
+          matchesProgress = !isEnrolled || (isEnrolled && progress === 0 && !isCompleted);
+        }
+      }
+      
+      return matchesSearch && matchesCategory && matchesDifficulty && matchesProgress;
     })
     .sort((a, b) => {
       if (filter === 'best') {
@@ -183,6 +202,38 @@ export default function Courses() {
               </SelectContent>
             </Select>
 
+            <Select value={progressStatus} onValueChange={setProgressStatus}>
+              <SelectTrigger className="w-40 bg-muted border-border" data-testid="select-progress">
+                <SelectValue placeholder="Progress" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">
+                  <span className="flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    All Progress
+                  </span>
+                </SelectItem>
+                <SelectItem value="completed">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-kaspa-green" />
+                    Completed
+                  </span>
+                </SelectItem>
+                <SelectItem value="in-progress">
+                  <span className="flex items-center gap-2">
+                    <PlayCircle className="w-4 h-4 text-kaspa-cyan" />
+                    In Progress
+                  </span>
+                </SelectItem>
+                <SelectItem value="not-started">
+                  <span className="flex items-center gap-2">
+                    <Circle className="w-4 h-4 text-muted-foreground" />
+                    Not Started
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
             <Tabs value={filter} onValueChange={setFilter}>
               <TabsList className="bg-muted">
                 <TabsTrigger value="all" className="gap-2" data-testid="tab-all">
@@ -226,6 +277,17 @@ export default function Courses() {
               onClick={() => setDifficulty('All')}
             >
               {difficulty} &times;
+            </Badge>
+          )}
+          {progressStatus !== 'All' && (
+            <Badge 
+              variant="outline" 
+              className="text-kaspa-green border-kaspa-green/30 cursor-pointer"
+              onClick={() => setProgressStatus('All')}
+              data-testid="badge-progress-filter"
+            >
+              {progressStatus === 'completed' ? 'Completed' : 
+               progressStatus === 'in-progress' ? 'In Progress' : 'Not Started'} &times;
             </Badge>
           )}
         </div>
