@@ -42,9 +42,9 @@ function App() {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <div className="text-foreground">
+          <div className="min-h-screen flex flex-col text-foreground">
             <Navbar />
-            <main className="pb-safe">
+            <main className="flex-1 flex flex-col pb-safe">
               <Router />
             </main>
           </div>
