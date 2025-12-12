@@ -349,7 +349,7 @@ export default function Dashboard() {
             <TabsList className="bg-muted inline-flex min-w-max">
               <TabsTrigger value="courses" className="gap-2" data-testid="tab-my-courses">
                 <BookOpen className="w-4 h-4" />
-                <span className="hidden sm:inline">My </span>Courses
+                <span className="hidden sm:inline">My</span> Courses
               </TabsTrigger>
               <TabsTrigger value="certificates" className="gap-2" data-testid="tab-certificates">
                 <Award className="w-4 h-4" />
