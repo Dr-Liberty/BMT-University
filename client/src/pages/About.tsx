@@ -83,7 +83,7 @@ export default function About() {
   const paragraphs = aboutPage.description.split('\n\n').filter(p => p.trim());
 
   return (
-    <div className="min-h-screen" data-testid="page-about">
+    <div className="min-h-screen flex flex-col" data-testid="page-about">
       <section className="pt-24 pb-16 px-4 sm:px-6 border-b border-border" data-testid="section-about-description">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 items-center">

@@ -4,7 +4,7 @@ import { SiX, SiTelegram, SiDiscord } from 'react-icons/si';
 
 export default function Footer() {
   return (
-    <footer className="bg-card border-t border-border py-12 px-4 sm:px-6" data-testid="footer-main">
+    <footer className="bg-card border-t border-border py-12 px-4 sm:px-6 mt-auto" data-testid="footer-main">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="col-span-1 md:col-span-2">
