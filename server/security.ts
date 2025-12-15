@@ -33,7 +33,7 @@ const SECURITY_THRESHOLDS = {
   MAX_WALLETS_PER_IP_24H: 3,
   MAX_WALLETS_PER_FINGERPRINT_24H: 2,
   MIN_COURSE_COMPLETION_SECONDS: 60, // Minimum 1 minute per lesson
-  MIN_LESSON_TIME_SECONDS: 10, // Minimum 10 seconds per lesson
+  MIN_LESSON_TIME_SECONDS: 5, // Minimum 5 seconds per lesson
   CLUSTER_AUTO_BLOCK_THRESHOLD: 5, // Auto-block clusters with 5+ wallets
   CLUSTER_HIGH_RISK_THRESHOLD: 3, // Flag as high risk at 3+ wallets
 };
