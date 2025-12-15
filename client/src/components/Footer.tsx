@@ -88,6 +88,11 @@ export default function Footer() {
                 </a>
               </li>
               <li>
+                <a href="https://kaspa.stream" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
+                  Kaspa.stream
+                </a>
+              </li>
+              <li>
                 <a href="https://igralabs.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
                   IgraLabs.com
                 </a>
