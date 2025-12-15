@@ -224,9 +224,9 @@ Our mission is to educate the crypto community about the revolutionary potential
     {
       id: '4',
       title: 'Igra Network Integration',
-      description: 'Expand to support Igra network for cross-chain learning experiences.',
+      description: 'Expand to support Igra network for cross-chain learning experiences. Igra mainnet launches Q2 2026.',
       status: 'planned',
-      targetDate: 'Q3 2025',
+      targetDate: 'Q2 2026',
     },
   ],
   updatedAt: new Date(),
