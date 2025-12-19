@@ -2066,8 +2066,12 @@ export async function registerRoutes(
       
       // Background confirmation polling (non-blocking)
       // SECURITY: Uses atomic transactions to prevent partial updates
+      // RELIABILITY: Requires 3 consecutive failure confirmations before marking as failed
       (async () => {
         const maxPolls = 120; // 2 minutes max
+        let consecutiveFailures = 0;
+        const requiredFailures = 3; // Need 3 consecutive "failed" confirmations
+        
         for (let i = 0; i < maxPolls; i++) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           
@@ -2076,6 +2080,9 @@ export async function registerRoutes(
             
             if (status.confirmed) {
               if (status.success) {
+                // Reset failure counter and confirm success
+                consecutiveFailures = 0;
+                
                 // SECURITY: Atomic confirmation - updates reward + payout in single transaction
                 const confirmed = await storage.confirmPayoutAtomically(
                   rewardId, 
@@ -2088,30 +2095,43 @@ export async function registerRoutes(
                 } else {
                   console.error(`[Claim] Atomic confirmation failed for ${result.txHash}`);
                 }
+                return;
               } else {
-                // SECURITY: Atomic failure - updates reward status + rolls back daily limit
-                if (user.walletAddress) {
-                  const failed = await storage.failPayoutAtomically(
-                    rewardId,
-                    user.walletAddress,
-                    reward.amount
-                  );
-                  
-                  if (failed) {
-                    console.log(`[Claim] FAILED (atomic): Rolled back ${reward.amount} BMT for ${user.walletAddress}`);
-                  }
-                }
+                // Increment failure counter - don't mark as failed immediately
+                consecutiveFailures++;
+                console.warn(`[Claim] Tx ${result.txHash?.slice(0, 12)}... appears failed (${consecutiveFailures}/${requiredFailures})`);
                 
-                console.error(`[Claim] Transaction reverted: ${result.txHash}`);
+                // Only mark as failed after multiple consecutive confirmations
+                if (consecutiveFailures >= requiredFailures) {
+                  // SECURITY: Atomic failure - updates reward status + rolls back daily limit
+                  if (user.walletAddress) {
+                    const failed = await storage.failPayoutAtomically(
+                      rewardId,
+                      user.walletAddress,
+                      reward.amount
+                    );
+                    
+                    if (failed) {
+                      console.log(`[Claim] FAILED (atomic): Rolled back ${reward.amount} BMT for ${user.walletAddress}`);
+                    }
+                  }
+                  
+                  console.error(`[Claim] Transaction reverted after ${requiredFailures} confirmations: ${result.txHash}`);
+                  return;
+                }
+                // Continue polling to verify failure
               }
-              return;
+            } else {
+              // Tx not yet confirmed - reset failure counter
+              consecutiveFailures = 0;
             }
           } catch (pollError) {
             console.error(`[Claim] Poll error:`, pollError);
+            // Don't count errors as failures - network issues shouldn't mark tx failed
           }
         }
         
-        // Timeout - leave as processing, user can check status later
+        // Timeout - leave as processing, user can retry later
         console.warn(`[Claim] Confirmation timeout for ${result.txHash}`);
       })();
     } catch (error: any) {

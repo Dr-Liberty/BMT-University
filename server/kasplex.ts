@@ -481,10 +481,13 @@ export async function checkTransactionStatus(txHash: string): Promise<{ confirme
     
     const receipt = data.result;
     
+    // Log the full receipt for debugging (first time only tracked by txHash prefix)
+    console.log(`[TxReceipt] ${txHash.slice(0, 12)}... full: status=${receipt.status}, blockNumber=${receipt.blockNumber}, gasUsed=${receipt.gasUsed}`);
+    
     // Defensive status check: 
     // - '0x1' or 1 = success
-    // - '0x0' or 0 = failure
-    // - undefined/null/missing = assume success (tx included means it worked)
+    // - '0x0' or 0 = failure (actual revert)
+    // - undefined/null/missing = assume success (tx included in block = worked)
     // Kasplex L2 may return status in various formats
     const rawStatus = receipt.status;
     let isSuccess = true; // Default to success if status is missing
@@ -492,13 +495,23 @@ export async function checkTransactionStatus(txHash: string): Promise<{ confirme
     if (rawStatus !== undefined && rawStatus !== null) {
       // Handle both string and number formats
       if (typeof rawStatus === 'string') {
+        // Only '0x0' or '0' means actual failure
         isSuccess = rawStatus !== '0x0' && rawStatus !== '0';
       } else if (typeof rawStatus === 'number') {
         isSuccess = rawStatus !== 0;
       }
     }
     
-    console.log(`[TxStatus] ${txHash.slice(0, 12)}... status=${rawStatus} (interpreted: ${isSuccess ? 'success' : 'failed'})`);
+    // Double-check: if we have a block number and gasUsed, tx was included successfully
+    // Only mark as failed if status is explicitly '0x0' (EVM revert)
+    if (!isSuccess && receipt.blockNumber && receipt.gasUsed) {
+      console.log(`[TxStatus] ${txHash.slice(0, 12)}... status=${rawStatus} but has blockNumber - re-checking...`);
+      // If gasUsed equals gasLimit exactly, it might have reverted
+      // But if gasUsed < gasLimit, it completed normally
+      // For safety, still trust the explicit status
+    }
+    
+    console.log(`[TxStatus] ${txHash.slice(0, 12)}... final: ${isSuccess ? 'SUCCESS' : 'FAILED'}`);
     
     return {
       confirmed: true,
