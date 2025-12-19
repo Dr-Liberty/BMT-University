@@ -480,9 +480,29 @@ export async function checkTransactionStatus(txHash: string): Promise<{ confirme
     }
     
     const receipt = data.result;
+    
+    // Defensive status check: 
+    // - '0x1' or 1 = success
+    // - '0x0' or 0 = failure
+    // - undefined/null/missing = assume success (tx included means it worked)
+    // Kasplex L2 may return status in various formats
+    const rawStatus = receipt.status;
+    let isSuccess = true; // Default to success if status is missing
+    
+    if (rawStatus !== undefined && rawStatus !== null) {
+      // Handle both string and number formats
+      if (typeof rawStatus === 'string') {
+        isSuccess = rawStatus !== '0x0' && rawStatus !== '0';
+      } else if (typeof rawStatus === 'number') {
+        isSuccess = rawStatus !== 0;
+      }
+    }
+    
+    console.log(`[TxStatus] ${txHash.slice(0, 12)}... status=${rawStatus} (interpreted: ${isSuccess ? 'success' : 'failed'})`);
+    
     return {
       confirmed: true,
-      success: receipt.status !== '0x0',
+      success: isSuccess,
       blockNumber: parseInt(receipt.blockNumber, 16),
     };
   } catch (error) {
