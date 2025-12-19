@@ -8,7 +8,7 @@ import { eq, desc } from "drizzle-orm";
 import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses, ipReputationCache } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import { ethers } from "ethers";
 import { 
   getERC20Balance, 
@@ -92,7 +92,7 @@ function verifySignature(message: string, signature: string, expectedAddress: st
   }
 }
 
-// Auth middleware (simplified for demo - wallet verification would be added in production)
+// Auth middleware - validates session token and attaches user to request
 async function authMiddleware(req: any, res: any, next: any) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
@@ -110,6 +110,22 @@ async function authMiddleware(req: any, res: any, next: any) {
   }
   
   req.user = user;
+  next();
+}
+
+// SECURITY: Require admin role middleware
+function requireAdmin(req: any, res: any, next: any) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
+// SECURITY: Require instructor or admin role middleware  
+function requireInstructorOrAdmin(req: any, res: any, next: any) {
+  if (!req.user || (req.user.role !== 'instructor' && req.user.role !== 'admin')) {
+    return res.status(403).json({ error: 'Instructor or admin access required' });
+  }
   next();
 }
 
@@ -1158,16 +1174,10 @@ export async function registerRoutes(
   }
 
   // Helper function to create deterministic fingerprint hash from device signals
+  // SECURITY: Uses SHA-256 for collision resistance (server-side only)
   function createFingerprintHash(data: { userAgent?: string; screenResolution?: string; timezone?: string; language?: string; platform?: string }): string {
     const str = `${data.userAgent || ''}|${data.screenResolution || ''}|${data.timezone || ''}|${data.language || ''}|${data.platform || ''}`;
-    // Use same algorithm as frontend for consistency
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(36).padStart(12, '0');
+    return createHash('sha256').update(str).digest('hex').substring(0, 16);
   }
 
   // Helper to normalize IP addresses (strip IPv6 prefix for IPv4-mapped addresses)

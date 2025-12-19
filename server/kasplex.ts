@@ -93,9 +93,9 @@ export interface TransferResult {
 
 // Helper to get nonce via raw RPC call (Kasplex compatibility)
 // Uses 'pending' to include unconfirmed transactions and avoid nonce collisions
+// SECURITY: Throws on failure to prevent nonce=0 replay attacks
 async function getRawNonce(walletAddress: string, usePending: boolean = true): Promise<number> {
   try {
-    // Try 'pending' first to include unconfirmed transactions
     const blockTag = usePending ? 'pending' : 'latest';
     const response = await fetch(KASPLEX_EVM_RPC, {
       method: 'POST',
@@ -118,15 +118,15 @@ async function getRawNonce(walletAddress: string, usePending: boolean = true): P
       return getRawNonce(walletAddress, false);
     }
     
-    console.warn('Could not get nonce from RPC, defaulting to 0');
-    return 0;
-  } catch (error) {
-    console.error('Failed to get nonce:', error);
-    // Fallback to 'latest' on error
-    if (usePending) {
+    // SECURITY: Fail hard instead of defaulting to 0 (prevents replay attacks)
+    throw new Error('RPC_NONCE_FAILURE: Could not retrieve nonce from network');
+  } catch (error: any) {
+    // Fallback to 'latest' on error (only once)
+    if (usePending && !error.message?.includes('RPC_NONCE_FAILURE')) {
       return getRawNonce(walletAddress, false);
     }
-    return 0;
+    // Re-throw to prevent transaction with potentially wrong nonce
+    throw new Error(`Failed to get transaction nonce: ${error.message || 'Network unavailable'}`);
   }
 }
 
