@@ -26,6 +26,7 @@ function mapCourseToDisplay(course: Course, enrollment?: EnrollmentWithQuizStatu
     duration: course.duration,
     enrollmentCount: course.enrollmentCount,
     rating: course.rating,
+    ratingCount: course.ratingCount ?? 0,
     bmtReward: course.bmtReward,
     progress: enrollment ? Number(enrollment.progress ?? 0) : undefined,
     quizPassed: enrollment?.quizPassed,

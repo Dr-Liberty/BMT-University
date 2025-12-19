@@ -100,13 +100,17 @@ export default function CourseCard({ course, enrolled, onEnroll, onContinue }: C
             <Users className="w-4 h-4" />
             {(course.enrollmentCount ?? 0).toLocaleString()}
           </span>
-          {course.rating && (
-            <span className="flex items-center gap-1 text-bmt-orange" data-testid={`rating-${course.id}`}>
-              <Star className="w-4 h-4 fill-current" />
-              {parseFloat(course.rating).toFixed(1)}
-              {course.ratingCount ? <span className="text-muted-foreground">({course.ratingCount})</span> : null}
-            </span>
-          )}
+          <span className="flex items-center gap-1" data-testid={`rating-${course.id}`}>
+            <Star className={`w-4 h-4 ${course.rating ? 'text-bmt-orange fill-current' : 'text-muted-foreground'}`} />
+            {course.rating ? (
+              <>
+                <span className="text-bmt-orange">{parseFloat(course.rating).toFixed(1)}</span>
+                {course.ratingCount ? <span className="text-muted-foreground">({course.ratingCount})</span> : null}
+              </>
+            ) : (
+              <span className="text-muted-foreground">No ratings</span>
+            )}
+          </span>
         </div>
 
         {enrolled && course.progress !== undefined && (
