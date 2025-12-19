@@ -6,7 +6,7 @@ import { useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAccount, useSignMessage } from 'wagmi';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export interface RewardTransaction {
   id: string;
@@ -40,6 +40,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const [signingRewardId, setSigningRewardId] = useState<string | null>(null);
+  const claimingRef = useRef<Set<string>>(new Set());
   
   // Check if using demo wallet
   const isDemoWallet = address?.toLowerCase().startsWith('0xdead');
@@ -52,7 +53,8 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
       });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      claimingRef.current.delete(variables.rewardId);
       if (data.status === 'processing') {
         toast({
           title: 'Transaction Submitted!',
@@ -66,12 +68,19 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
       }
       queryClient.invalidateQueries({ queryKey: ['/api/rewards'] });
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
+      claimingRef.current.delete(variables.rewardId);
       // Check for demo wallet error
       if (error.isDemo) {
         toast({
           title: 'Demo Wallet',
           description: 'Connect a real wallet to claim your rewards.',
+          variant: 'destructive',
+        });
+      } else if (error.message?.includes('already processing') || error.message?.includes('429')) {
+        toast({
+          title: 'Please Wait',
+          description: 'Your claim is being processed. Try again in a few seconds.',
           variant: 'destructive',
         });
       } else {
@@ -86,7 +95,14 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
   
   // Handle claim with signature
   const handleClaim = async (rewardId: string) => {
+    // Synchronous double-click prevention using ref
+    if (claimingRef.current.has(rewardId)) {
+      return;
+    }
+    claimingRef.current.add(rewardId);
+    
     if (isDemoWallet) {
+      claimingRef.current.delete(rewardId);
       toast({
         title: 'Demo Wallet',
         description: 'Connect a real wallet to claim your tokens.',
@@ -96,6 +112,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
     }
     
     if (!isConnected || !address) {
+      claimingRef.current.delete(rewardId);
       toast({
         title: 'Wallet Not Connected',
         description: 'Please connect your wallet to claim rewards.',
@@ -117,6 +134,7 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
       // Submit claim with signature
       claimMutation.mutate({ rewardId, signature, timestamp });
     } catch (error: any) {
+      claimingRef.current.delete(rewardId);
       // User rejected signature
       if (error.name === 'UserRejectedRequestError' || error.message?.includes('User rejected')) {
         toast({
