@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useDisconnect, useConnect } from 'wagmi';
+import { useAccount, useDisconnect, useConnect, useSignMessage } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken, setWalletAddress } from '@/lib/auth';
@@ -38,11 +38,13 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [isVerifyingSession, setIsVerifyingSession] = useState(false);
+  const [pendingNonce, setPendingNonce] = useState<string | null>(null);
   const { toast } = useToast();
   
   const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
   const { connect, connectors, isPending } = useConnect();
+  const { signMessageAsync } = useSignMessage();
 
   useEffect(() => {
     const token = getAuthToken();
@@ -115,7 +117,25 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       }
 
       const { nonce } = await nonceRes.json();
-      const signature = `0xrainbow_${nonce.slice(0, 32)}`;
+      setPendingNonce(nonce);
+      
+      const message = `Sign this message to authenticate with BMT University: ${nonce}`;
+      
+      let signature: string;
+      try {
+        signature = await signMessageAsync({ message });
+      } catch (signError) {
+        console.error('User rejected signature:', signError);
+        toast({
+          title: 'Signature Required',
+          description: 'Please sign the message to authenticate your wallet.',
+          variant: 'destructive',
+        });
+        setIsAuthenticating(false);
+        setPendingNonce(null);
+        return;
+      }
+      
       const fingerprintHash = getDeviceFingerprint();
 
       const verifyRes = await fetch('/api/auth/verify', {
@@ -125,7 +145,8 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       });
 
       if (!verifyRes.ok) {
-        throw new Error('Failed to verify wallet');
+        const errorData = await verifyRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to verify wallet');
       }
 
       const { token, farmingWarning } = await verifyRes.json();
@@ -142,6 +163,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       setAuthToken(token);
       setWalletAddress(walletAddress);
       setIsAuthenticated(true);
+      setPendingNonce(null);
 
       queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       queryClient.invalidateQueries({ queryKey: ['/api/enrollments'] });
@@ -196,6 +218,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
         description: error instanceof Error ? error.message : 'Failed to authenticate wallet.',
         variant: 'destructive',
       });
+      setPendingNonce(null);
     } finally {
       setIsAuthenticating(false);
     }

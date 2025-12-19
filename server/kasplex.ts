@@ -157,11 +157,8 @@ export async function submitTransferERC20(
     const walletAddress = wallet.address;
     const amountBigInt = BigInt(amount);
     
-    console.log(`[FastSubmit] Initiating ERC-20 transfer (attempt ${retryAttempt + 1}):`);
-    console.log(`  Token: ${tokenContract}`);
-    console.log(`  To: ${toAddress}`);
-    console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
-    console.log(`  From: ${walletAddress}`);
+    // Log transfer initiation (condensed for production)
+    console.log(`[Payout] Transfer attempt ${retryAttempt + 1}: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
     
     // Get nonce using raw RPC call
     const nonce = await getRawNonce(walletAddress);
@@ -428,11 +425,8 @@ export async function transferERC20(
     const wallet = new ethers.Wallet(privateKey);
     const walletAddress = wallet.address;
     
-    console.log(`Initiating ERC-20 transfer:`);
-    console.log(`  Token: ${tokenContract}`);
-    console.log(`  To: ${toAddress}`);
-    console.log(`  Amount: ${formatTokenAmount(amount, decimals)} (${amount} wei)`);
-    console.log(`  From: ${walletAddress}`);
+    // Log transfer initiation (condensed for production)
+    console.log(`[Payout] Sync transfer: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
     
     // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
     // Limited to 3 attempts to fit within browser timeout (~45s total)

@@ -227,8 +227,10 @@ export async function registerRoutes(
       }
       
       // Verify signature using EVM ECDSA recovery (Kasplex L2 is EVM-compatible)
-      // For demo mode with mock wallets, skip signature verification
-      const isDemoMode = isDemo === true || signature.startsWith('0xdemo_') || signature.startsWith('0xrainbow_');
+      // Demo mode only allowed for the designated demo wallet address
+      const DEMO_WALLET = '0xdead000000000000000000000000000000000001';
+      const isDemoWallet = walletAddress.toLowerCase() === DEMO_WALLET.toLowerCase();
+      const isDemoMode = isDemoWallet && (isDemo === true || signature.startsWith('0xdemo_'));
       
       if (!isDemoMode) {
         const message = `Sign this message to authenticate with BMT University: ${storedNonce.nonce}`;
