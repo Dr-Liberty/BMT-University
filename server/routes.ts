@@ -20,7 +20,9 @@ import {
   getNativeBalance,
   parseTokenAmount,
   getNetworkInfo,
-  getKaspacomTokenData
+  getKaspacomTokenData,
+  getNonceManagerStatus,
+  invalidateNonceCache
 } from "./kasplex";
 import {
   checkRateLimit,
@@ -2465,6 +2467,41 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error refreshing balance:", error);
       res.status(500).json({ error: "Failed to refresh balance" });
+    }
+  });
+
+  // ============ NONCE MANAGER ADMIN ENDPOINTS ============
+  // Monitor and manage the nonce cache for payout transactions
+  
+  // Get nonce manager status (for monitoring RPC instability)
+  app.get("/api/admin/nonce/status", adminMiddleware, async (req: any, res) => {
+    try {
+      const status = getNonceManagerStatus();
+      res.json({
+        ...status,
+        cacheAgeFormatted: `${Math.round(status.cacheAge / 1000)}s`,
+        message: status.isUnstable 
+          ? 'WARNING: RPC instability detected - multiple nonce resets in last minute'
+          : 'OK',
+      });
+    } catch (error) {
+      console.error("Error getting nonce status:", error);
+      res.status(500).json({ error: "Failed to get nonce manager status" });
+    }
+  });
+  
+  // Manually invalidate nonce cache (use if external tools submitted transactions)
+  app.post("/api/admin/nonce/invalidate", adminMiddleware, async (req: any, res) => {
+    try {
+      const { reason } = req.body;
+      const result = invalidateNonceCache(reason || 'admin_manual_invalidation');
+      
+      console.log(`[Admin] Nonce cache invalidated by ${req.user?.walletAddress} - reason: ${reason || 'manual'}`);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error invalidating nonce cache:", error);
+      res.status(500).json({ error: "Failed to invalidate nonce cache" });
     }
   });
 

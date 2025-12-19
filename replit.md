@@ -153,3 +153,61 @@ The payout system connects to Kasplex Layer 2 (EVM-compatible). Network is selec
 | Kasplex Testnet | 167012 | Testing only |
 
 **Important**: When transitioning networks, ensure the `PAYMASTER_PRIVATE_KEY` corresponds to a wallet with sufficient $BMT balance on the target network. The paymaster wallet address is derived from the private key - there is no separate address configuration.
+
+### Operational Runbook: Nonce Management
+
+The NonceManager handles transaction nonce coordination to prevent race conditions in concurrent payouts. This section documents operational procedures.
+
+**Admin Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/admin/nonce/status` | GET | View current nonce cache state, RPC instability alerts |
+| `/api/admin/nonce/invalidate` | POST | Manually clear nonce cache (body: `{ "reason": "description" }`) |
+
+**Monitoring Dashboard Fields:**
+
+| Field | Description | Alert Threshold |
+|-------|-------------|-----------------|
+| `currentNonce` | Last known nonce value | N/A |
+| `cacheAge` | Milliseconds since last chain fetch | > 30000ms = stale |
+| `isUnstable` | RPC instability flag | `true` = investigate |
+| `recentResets` | Nonce resets in last 60 seconds | > 5 = RPC issue |
+| `lastResets` | Recent reset events with timestamps | Review for patterns |
+
+**When to Invalidate Nonce Cache:**
+
+1. **External transaction submitted**: If you send a transaction from the paymaster wallet using an external tool (Metamask, Etherscan, etc.), immediately invalidate the cache:
+   ```
+   POST /api/admin/nonce/invalidate
+   { "reason": "external_tx_submitted" }
+   ```
+
+2. **Stuck transactions**: If payouts are failing with persistent "nonce too low" errors despite retries, invalidate and check the paymaster wallet on the explorer.
+
+3. **RPC endpoint changed**: If the RPC URL is changed or the node is restarted, invalidate to resync with chain state.
+
+**Troubleshooting RPC Instability:**
+
+If `isUnstable` is `true`:
+1. Check Kasplex RPC status (https://evmrpc.kasplex.org health)
+2. Review `lastResets` for error patterns
+3. Consider enabling circuit breaker to pause payouts
+4. Contact Kasplex team if persistent
+
+**Recovery Procedure for Failed Payouts:**
+
+1. Check `/api/admin/nonce/status` for instability
+2. Review `/api/admin/payouts` for stuck transactions
+3. Verify paymaster wallet balance on explorer
+4. If transactions are stuck in mempool, wait or use speed-up with higher gas
+5. Once mempool clears, invalidate nonce cache and resume payouts
+
+**Log Markers to Monitor:**
+
+| Log Pattern | Meaning |
+|-------------|---------|
+| `[NonceManager] Fetched nonce from chain: X` | Fresh nonce from RPC |
+| `[NonceManager] Nonce error detected` | Auto-retry triggered |
+| `[NonceManager] WARNING: RPC instability` | 5+ resets in 60s - investigate |
+| `[NonceManager] Manual cache invalidation` | Admin triggered reset |

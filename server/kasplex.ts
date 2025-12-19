@@ -8,11 +8,23 @@ import { desc, gte } from "drizzle-orm";
 // Without this, two simultaneous payouts could use the same nonce,
 // causing the second transaction to fail with "nonce too low"
 
+interface NonceResetEvent {
+  timestamp: Date;
+  reason: string;
+  errorCode?: number;
+}
+
 class NonceManager {
   private lock: Promise<void> = Promise.resolve();
   private localNonce: number | null = null;
   private lastNonceTime: number = 0;
   private readonly NONCE_STALE_MS = 30000; // Refresh from chain every 30s
+  
+  // Monitoring: Track nonce resets for RPC instability detection
+  private resetHistory: NonceResetEvent[] = [];
+  private readonly RESET_HISTORY_MAX = 100;
+  private readonly INSTABILITY_THRESHOLD = 5; // Resets in window = instability
+  private readonly INSTABILITY_WINDOW_MS = 60000; // 1 minute window
   
   // Acquire exclusive lock for transaction submission
   async acquireLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -75,20 +87,120 @@ class NonceManager {
       console.log('[NonceManager] Nonce error detected, resetting local cache');
       this.localNonce = null;
       this.lastNonceTime = 0;
+      
+      // Track reset for monitoring
+      this.recordReset(errorStr.slice(0, 100), error?.code);
+      
+      // Check for RPC instability and alert
+      if (this.isUnstable()) {
+        console.error('[NonceManager] WARNING: RPC instability detected! Multiple nonce resets in short window.');
+      }
+      
       return true;
     }
     return false;
   }
   
-  // Force refresh on next call
-  invalidate(): void {
+  // Force refresh on next call (manual invalidation)
+  invalidate(reason: string = 'manual'): void {
+    console.log(`[NonceManager] Manual cache invalidation: ${reason}`);
     this.localNonce = null;
     this.lastNonceTime = 0;
+    this.recordReset(reason);
+  }
+  
+  // Record a nonce reset event for monitoring and audit log
+  private recordReset(reason: string, errorCode?: number): void {
+    this.resetHistory.push({
+      timestamp: new Date(),
+      reason,
+      errorCode,
+    });
+    
+    // Trim history to max size
+    if (this.resetHistory.length > this.RESET_HISTORY_MAX) {
+      this.resetHistory = this.resetHistory.slice(-this.RESET_HISTORY_MAX);
+    }
+    
+    // Persist to audit log for production monitoring (async, fire-and-forget)
+    this.persistToAuditLog(reason, errorCode).catch(err => {
+      console.error('[NonceManager] Failed to persist reset to audit log:', err);
+    });
+  }
+  
+  // Persist nonce reset event to database for production auditing
+  private async persistToAuditLog(reason: string, errorCode?: number): Promise<void> {
+    try {
+      await db.insert(paymasterAuditLog).values({
+        operation: 'nonce_reset',
+        toAddress: 'system',
+        amount: '0',
+        txHash: null,
+        status: this.isUnstable() ? 'warning' : 'info',
+        metadata: {
+          reason: reason.slice(0, 200),
+          errorCode,
+          recentResets: this.resetHistory.filter(
+            r => Date.now() - r.timestamp.getTime() < this.INSTABILITY_WINDOW_MS
+          ).length,
+          isUnstable: this.isUnstable(),
+        },
+      });
+    } catch (error) {
+      // Don't throw - audit log failure shouldn't block transactions
+      console.error('[NonceManager] Audit log persistence error:', error);
+    }
+  }
+  
+  // Check if RPC is unstable (many resets in short window)
+  isUnstable(): boolean {
+    const now = Date.now();
+    const recentResets = this.resetHistory.filter(
+      r => now - r.timestamp.getTime() < this.INSTABILITY_WINDOW_MS
+    );
+    return recentResets.length >= this.INSTABILITY_THRESHOLD;
+  }
+  
+  // Get status for admin monitoring
+  getStatus(): {
+    currentNonce: number | null;
+    cacheAge: number;
+    isStale: boolean;
+    isUnstable: boolean;
+    recentResets: number;
+    totalResets: number;
+    lastResets: NonceResetEvent[];
+  } {
+    const now = Date.now();
+    const cacheAge = this.lastNonceTime ? now - this.lastNonceTime : 0;
+    const recentResets = this.resetHistory.filter(
+      r => now - r.timestamp.getTime() < this.INSTABILITY_WINDOW_MS
+    ).length;
+    
+    return {
+      currentNonce: this.localNonce,
+      cacheAge,
+      isStale: cacheAge > this.NONCE_STALE_MS,
+      isUnstable: this.isUnstable(),
+      recentResets,
+      totalResets: this.resetHistory.length,
+      lastResets: this.resetHistory.slice(-10), // Last 10 resets
+    };
   }
 }
 
 // Singleton nonce manager for the paymaster wallet
 const nonceManager = new NonceManager();
+
+// Export for admin endpoints
+export function getNonceManagerStatus() {
+  return nonceManager.getStatus();
+}
+
+export function invalidateNonceCache(reason: string = 'admin_request') {
+  nonceManager.invalidate(reason);
+  return { success: true, message: `Nonce cache invalidated: ${reason}` };
+}
 
 // Network configuration - toggle between testnet and mainnet
 // Default to mainnet for production use with real BMT token
