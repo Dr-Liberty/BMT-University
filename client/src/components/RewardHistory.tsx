@@ -77,11 +77,10 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
           description: 'Connect a real wallet to claim your rewards.',
           variant: 'destructive',
         });
-      } else if (error.message?.includes('already processing') || error.message?.includes('429')) {
+      } else if (error.message?.includes('already processing') || error.message?.includes('429') || error.message?.includes('Please wait')) {
         toast({
           title: 'Please Wait',
-          description: 'Your claim is being processed. Try again in a few seconds.',
-          variant: 'destructive',
+          description: 'There is a 15-second cooldown between claim attempts. Please wait and try again.',
         });
       } else {
         toast({
