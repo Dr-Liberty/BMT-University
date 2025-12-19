@@ -3,6 +3,15 @@ import { rateLimitStore, userThrottleStore, requestDedupeStore, claimNonces } fr
 import { eq, lt, and, gt } from "drizzle-orm";
 import { randomBytes } from "crypto";
 
+// SECURITY: Safe error logging to prevent credential leakage
+function safeErrorLog(prefix: string, error: any): void {
+  const safeError = {
+    message: error?.message?.substring(0, 200) || 'Unknown error',
+    code: error?.code || undefined,
+  };
+  console.error(prefix, JSON.stringify(safeError));
+}
+
 const RATE_LIMITS = {
   auth: { window: 15 * 60 * 1000, maxRequests: 10 },
   quiz: { window: 60 * 1000, maxRequests: 5 },
@@ -62,7 +71,7 @@ export async function checkRateLimit(key: string, limitType: RateLimitType = 'ge
     
     return true;
   } catch (error) {
-    console.error('Rate limit check failed, allowing request:', error);
+    safeErrorLog('Rate limit check failed, allowing request:', error);
     return true;
   }
 }
@@ -94,7 +103,7 @@ export async function checkUserThrottle(userId: string, action: string, minInter
     
     return true;
   } catch (error) {
-    console.error('Throttle check failed, allowing request:', error);
+    safeErrorLog('Throttle check failed, allowing request:', error);
     return true;
   }
 }
@@ -122,7 +131,7 @@ export async function isDuplicateRequest(hash: string, windowMs: number = 5000):
     
     return false;
   } catch (error) {
-    console.error('Dedupe check failed, allowing request:', error);
+    safeErrorLog('Dedupe check failed, allowing request:', error);
     return false;
   }
 }
@@ -197,7 +206,7 @@ export async function validateAndConsumeNonce(
     
     return { valid: true };
   } catch (error) {
-    console.error('Nonce validation failed:', error);
+    safeErrorLog('Nonce validation failed:', error);
     return { valid: false, reason: 'Validation error' };
   }
 }
@@ -246,7 +255,7 @@ export async function cleanupExpiredRecords(): Promise<{ deleted: { rateLimits: 
       }
     };
   } catch (error) {
-    console.error('Cleanup failed:', error);
+    safeErrorLog('Cleanup failed:', error);
     return { deleted: { rateLimits: 0, throttles: 0, dedupes: 0, nonces: 0 } };
   }
 }

@@ -9,6 +9,16 @@ import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLe
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
+
+// ============ SECURITY: Safe Error Logging ============
+// Prevents sensitive data from leaking through error stack traces
+function safeErrorLog(prefix: string, error: any): void {
+  const safeError = {
+    message: error?.message?.substring(0, 200) || 'Unknown error',
+    code: error?.code || undefined,
+  };
+  console.error(prefix, JSON.stringify(safeError));
+}
 import { ethers } from "ethers";
 import { 
   getERC20Balance, 
@@ -89,7 +99,8 @@ function verifySignature(message: string, signature: string, expectedAddress: st
     const recoveredAddress = ethers.verifyMessage(message, signature);
     return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
   } catch (error) {
-    console.error("Signature verification failed:", error);
+    // SECURITY: Don't log full error - could contain signature bytes
+    safeErrorLog("Signature verification failed:", error);
     return false;
   }
 }

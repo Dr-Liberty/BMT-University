@@ -62,7 +62,9 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 *   **Secure Logging (Dec 2025)**: 
     - Response logging redacts sensitive fields (token, password, secret, apiKey, privateKey, sessionToken)
     - Auth endpoints (/api/auth/verify, /api/auth/login) skip response body logging entirely
-    - Private key errors sanitized to prevent credential leakage in stack traces
+    - `safeErrorLog()` helper used across all server files to sanitize error objects before logging
+    - Error logs truncate messages to 200 chars and extract only safe fields (message, code, reason)
+    - Prevents credential leakage through stack traces in: kasplex.ts, security.ts, routes.ts, rateLimiter.ts, storage.ts
 *   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 3+ wallets per device.
     - **Policy**: Completing all courses is NOT grounds for flagging - we WANT users to complete courses!
     - Only flag for: unrealistically fast completion (<10% expected time), 3+ wallets per device, 10+ wallets per IP, post-payout dumping.

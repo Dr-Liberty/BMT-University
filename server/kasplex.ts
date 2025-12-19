@@ -3,6 +3,19 @@ import { db } from "./db";
 import { paymasterAuditLog, paymasterCircuitBreaker } from "@shared/schema";
 import { desc, gte } from "drizzle-orm";
 
+// ============ SECURITY: Safe Error Logging ============
+// SECURITY: Prevents sensitive data (private keys, API keys, RPC credentials) 
+// from leaking through error stack traces or messages
+function safeErrorLog(prefix: string, error: any): void {
+  // Extract only safe fields from error
+  const safeError = {
+    message: error?.message?.substring(0, 200) || 'Unknown error',
+    code: error?.code || undefined,
+    reason: error?.reason || undefined,
+  };
+  console.error(prefix, JSON.stringify(safeError));
+}
+
 // ============ NONCE MANAGER (Race Condition Prevention) ============
 // SECURITY: Serializes payouts to prevent concurrent nonce collisions
 // Without this, two simultaneous payouts could use the same nonce,
@@ -148,7 +161,7 @@ class NonceManager {
       });
     } catch (error) {
       // Don't throw - audit log failure shouldn't block transactions
-      console.error('[NonceManager] Audit log persistence error:', error);
+      safeErrorLog('[NonceManager] Audit log persistence error:', error);
     }
   }
   
@@ -429,7 +442,7 @@ export async function submitTransferERC20(
         
         return { success: true, txHash };
       } catch (error: any) {
-        console.error('[FastSubmit] Error:', error);
+        safeErrorLog('[FastSubmit] Error:', error);
         lastError = error.message || 'Broadcast failed';
         
         // Check if this is a nonce-related error - pass full error object
@@ -713,7 +726,7 @@ export async function transferERC20(
         error: 'Transaction failed after multiple retry attempts. The network may be congested.',
       };
     } catch (error: any) {
-      console.error('ERC-20 transfer failed:', error);
+      safeErrorLog('[ERC-20] Transfer failed:', error);
       
       // Check for nonce-related errors
       nonceManager.handleNonceError(error);

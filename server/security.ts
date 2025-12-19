@@ -16,6 +16,16 @@ import {
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { getOutboundTransfers, getCurrentBlockNumber } from './kasplex';
 
+// ============ SECURITY: Safe Error Logging ============
+// Prevents sensitive data (API keys, credentials) from leaking through error messages
+function safeErrorLog(prefix: string, error: any): void {
+  const safeError = {
+    message: error?.message?.substring(0, 200) || 'Unknown error',
+    code: error?.code || undefined,
+  };
+  console.error(prefix, JSON.stringify(safeError));
+}
+
 // ============ ANTI-ABUSE POLICY ============
 // IMPORTANT: The following are NOT valid reasons for flagging/blocking wallets:
 // - Completing all courses (we WANT users to complete all courses!)
@@ -968,7 +978,8 @@ async function queryIpQualityScore(ip: string): Promise<IpReputationResult> {
     return result;
     
   } catch (error) {
-    console.error('[Security] Error querying IPQS:', error);
+    // SECURITY: Don't log full error - could contain API key in URL
+    safeErrorLog('[Security] Error querying IPQS:', error);
     // Return permissive result on error
     return {
       isClean: true,
@@ -1108,7 +1119,7 @@ setInterval(async () => {
     const result = await cleanupExpiredSecurityData();
     console.log('[Security] Data retention cleanup completed:', result);
   } catch (error) {
-    console.error('[Security] Data retention cleanup failed:', error);
+    safeErrorLog('[Security] Data retention cleanup failed:', error);
   }
 }, 6 * 60 * 60 * 1000);
 

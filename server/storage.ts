@@ -33,6 +33,15 @@ import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { randomUUID } from "crypto";
 
+// SECURITY: Safe error logging to prevent credential leakage
+function safeErrorLog(prefix: string, error: any): void {
+  const safeError = {
+    message: error?.message?.substring(0, 200) || 'Unknown error',
+    code: error?.code || undefined,
+  };
+  console.error(prefix, JSON.stringify(safeError));
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByWallet(walletAddress: string): Promise<User | undefined>;
@@ -1406,7 +1415,7 @@ export class DatabaseStorage implements IStorage {
       });
       return true;
     } catch (error) {
-      console.error('[Atomic Payout] Confirm transaction failed:', error);
+      safeErrorLog('[Atomic Payout] Confirm transaction failed:', error);
       return false;
     }
   }
@@ -1430,7 +1439,7 @@ export class DatabaseStorage implements IStorage {
       });
       return true;
     } catch (error) {
-      console.error('[Atomic Payout] Fail transaction failed:', error);
+      safeErrorLog('[Atomic Payout] Fail transaction failed:', error);
       return false;
     }
   }
