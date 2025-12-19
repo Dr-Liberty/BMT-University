@@ -154,6 +154,9 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Track if we've attempted auto-apply to prevent infinite loops
+  const [autoApplyAttempted, setAutoApplyAttempted] = useState(false);
+
   const { data: enrollments = [], isLoading: enrollmentsLoading, error: enrollmentsError, refetch: refetchEnrollments } = useQuery<EnrollmentWithCourse[]>({
     queryKey: ['/api/enrollments'],
     retry: false,
@@ -178,7 +181,7 @@ export default function Dashboard() {
     retry: false,
   });
   
-  const { data: myReferrer } = useQuery<Referral | null>({
+  const { data: myReferrer, isLoading: myReferrerLoading } = useQuery<Referral | null>({
     queryKey: ['/api/referrals/my-referrer'],
     retry: false,
   });
@@ -208,6 +211,27 @@ export default function Dashboard() {
       applyReferralMutation.mutate(referralCodeInput.trim());
     }
   };
+
+  // Auto-apply referral code for already-authenticated users
+  useEffect(() => {
+    // Only run if:
+    // 1. We have a pending referral code in localStorage
+    // 2. User hasn't been referred yet (myReferrer is null and query is loaded)
+    // 3. We haven't already attempted auto-apply
+    // 4. The mutation isn't already running
+    const pendingCode = localStorage.getItem('pendingReferralCode');
+    if (
+      pendingCode &&
+      !myReferrerLoading &&
+      myReferrer === null &&
+      !autoApplyAttempted &&
+      !applyReferralMutation.isPending
+    ) {
+      setAutoApplyAttempted(true);
+      // Auto-apply the referral code
+      applyReferralMutation.mutate(pendingCode);
+    }
+  }, [myReferrer, myReferrerLoading, autoApplyAttempted, applyReferralMutation]);
 
   const { data: coursesResponse } = useQuery<{ courses: Course[]; pagination: { limit: number; offset: number; hasMore: boolean } }>({
     queryKey: ['/api/courses'],
