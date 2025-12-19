@@ -77,10 +77,17 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
           description: 'Connect a real wallet to claim your rewards.',
           variant: 'destructive',
         });
-      } else if (error.message?.includes('already processing') || error.message?.includes('429') || error.message?.includes('Please wait')) {
+      } else if (error.message?.toLowerCase().includes('daily') || error.message?.toLowerCase().includes('limit reached')) {
+        // Daily payout limit reached - show detailed message
+        toast({
+          title: 'Daily Limit Reached',
+          description: error.message || 'You have reached your daily payout limit. Try again tomorrow.',
+          variant: 'destructive',
+        });
+      } else if (error.message?.includes('already processing') || error.message?.includes('Please wait')) {
         toast({
           title: 'Please Wait',
-          description: 'There is a 15-second cooldown between claim attempts. Please wait and try again.',
+          description: 'There is a 15-second cooldown between claim attempts.',
         });
       } else {
         toast({
