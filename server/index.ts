@@ -34,6 +34,26 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// SECURITY: Fields to redact from response logging
+const SENSITIVE_FIELDS = ['token', 'password', 'secret', 'apiKey', 'privateKey', 'sessionToken'];
+const SENSITIVE_ENDPOINTS = ['/api/auth/verify', '/api/auth/login'];
+
+function redactSensitiveData(obj: Record<string, any>): Record<string, any> {
+  if (!obj || typeof obj !== 'object') return obj;
+  
+  const redacted: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (SENSITIVE_FIELDS.some(field => key.toLowerCase().includes(field.toLowerCase()))) {
+      redacted[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      redacted[key] = redactSensitiveData(value);
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -49,8 +69,12 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      
+      // SECURITY: Skip logging response body for sensitive endpoints entirely
+      // For other endpoints, redact any sensitive fields
+      if (capturedJsonResponse && !SENSITIVE_ENDPOINTS.includes(path)) {
+        const safeResponse = redactSensitiveData(capturedJsonResponse);
+        logLine += ` :: ${JSON.stringify(safeResponse)}`;
       }
 
       log(logLine);

@@ -277,7 +277,8 @@ export function getPaymasterWalletAddress(): string | null {
     const wallet = new ethers.Wallet(privateKey);
     return wallet.address;
   } catch (error) {
-    console.error('Invalid paymaster private key:', error);
+    // SECURITY: Never log the actual error - it may contain the private key
+    console.error('Invalid paymaster private key format (details redacted for security)');
     return null;
   }
 }

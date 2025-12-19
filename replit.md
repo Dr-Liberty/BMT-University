@@ -59,6 +59,10 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 *   **Anti-DDoS Protection**: Per-user submission throttling prevents rapid-fire attacks.
 *   **Request Deduplication**: 10-15 second windows prevent replay attacks on sensitive endpoints.
 *   **Error Sanitization**: Production mode hides internal error details from responses.
+*   **Secure Logging (Dec 2025)**: 
+    - Response logging redacts sensitive fields (token, password, secret, apiKey, privateKey, sessionToken)
+    - Auth endpoints (/api/auth/verify, /api/auth/login) skip response body logging entirely
+    - Private key errors sanitized to prevent credential leakage in stack traces
 *   **Anti-Farming System**: Device fingerprinting, multi-wallet detection, 24-hour cooldowns, flags at 3+ wallets per device.
     - **Policy**: Completing all courses is NOT grounds for flagging - we WANT users to complete courses!
     - Only flag for: unrealistically fast completion (<10% expected time), 3+ wallets per device, 10+ wallets per IP, post-payout dumping.
