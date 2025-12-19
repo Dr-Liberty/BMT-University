@@ -3,6 +3,93 @@ import { db } from "./db";
 import { paymasterAuditLog, paymasterCircuitBreaker } from "@shared/schema";
 import { desc, gte } from "drizzle-orm";
 
+// ============ NONCE MANAGER (Race Condition Prevention) ============
+// SECURITY: Serializes payouts to prevent concurrent nonce collisions
+// Without this, two simultaneous payouts could use the same nonce,
+// causing the second transaction to fail with "nonce too low"
+
+class NonceManager {
+  private lock: Promise<void> = Promise.resolve();
+  private localNonce: number | null = null;
+  private lastNonceTime: number = 0;
+  private readonly NONCE_STALE_MS = 30000; // Refresh from chain every 30s
+  
+  // Acquire exclusive lock for transaction submission
+  async acquireLock<T>(fn: () => Promise<T>): Promise<T> {
+    // Queue this operation after all pending operations
+    const previousLock = this.lock;
+    let releaseLock: () => void;
+    this.lock = new Promise((resolve) => { releaseLock = resolve; });
+    
+    await previousLock;
+    try {
+      return await fn();
+    } finally {
+      releaseLock!();
+    }
+  }
+  
+  // Get next nonce, using local tracking to avoid race conditions
+  async getNextNonce(walletAddress: string, fetchFn: () => Promise<number>): Promise<number> {
+    const now = Date.now();
+    
+    // If local nonce is stale or unset, fetch from chain
+    if (this.localNonce === null || (now - this.lastNonceTime) > this.NONCE_STALE_MS) {
+      this.localNonce = await fetchFn();
+      this.lastNonceTime = now;
+      console.log(`[NonceManager] Fetched nonce from chain: ${this.localNonce}`);
+    }
+    
+    const nonce = this.localNonce;
+    this.localNonce++; // Increment for next transaction
+    return nonce;
+  }
+  
+  // Handle nonce errors - reset and refetch
+  // Handles both string messages and structured RPC errors
+  handleNonceError(error: string | any): boolean {
+    // Normalize error to string for checking
+    let errorStr = '';
+    if (typeof error === 'string') {
+      errorStr = error.toLowerCase();
+    } else if (error?.message) {
+      errorStr = error.message.toLowerCase();
+    }
+    
+    // Also check error.data.message for nested RPC errors
+    if (error?.data?.message) {
+      errorStr += ' ' + error.data.message.toLowerCase();
+    }
+    
+    // Check error codes commonly used for nonce issues
+    const nonceErrorCodes = [-32000, -32003, -32010]; // Common JSON-RPC error codes for nonce/gas issues
+    const hasNonceErrorCode = error?.code && nonceErrorCodes.includes(error.code);
+    
+    const isNonceError = errorStr.includes('nonce') ||
+                         errorStr.includes('replacement') ||
+                         errorStr.includes('underpriced') ||
+                         errorStr.includes('already known') ||
+                         hasNonceErrorCode;
+    
+    if (isNonceError) {
+      console.log('[NonceManager] Nonce error detected, resetting local cache');
+      this.localNonce = null;
+      this.lastNonceTime = 0;
+      return true;
+    }
+    return false;
+  }
+  
+  // Force refresh on next call
+  invalidate(): void {
+    this.localNonce = null;
+    this.lastNonceTime = 0;
+  }
+}
+
+// Singleton nonce manager for the paymaster wallet
+const nonceManager = new NonceManager();
+
 // Network configuration - toggle between testnet and mainnet
 // Default to mainnet for production use with real BMT token
 const USE_TESTNET = process.env.KASPLEX_NETWORK === 'testnet';
@@ -138,7 +225,8 @@ export interface BroadcastResult {
 }
 
 // Submit transaction without waiting for confirmation (fast, for async flows)
-// retryAttempt: 0 = first try (4x gas), 1 = second try (5x gas), etc.
+// SECURITY: Uses NonceManager lock to prevent concurrent nonce collisions
+// retryAttempt: 0 = first try (8x gas), 1 = second try (10x gas), etc.
 export async function submitTransferERC20(
   tokenContract: string,
   toAddress: string,
@@ -152,69 +240,97 @@ export async function submitTransferERC20(
     return { success: false, error: 'Paymaster private key not configured' };
   }
 
-  try {
-    const wallet = new ethers.Wallet(privateKey);
-    const walletAddress = wallet.address;
-    const amountBigInt = BigInt(amount);
+  // CRITICAL: Acquire lock to serialize transaction submissions
+  // This prevents race conditions where two payouts get the same nonce
+  return nonceManager.acquireLock(async () => {
+    const maxNonceRetries = 3;
+    let lastError = '';
     
-    // Log transfer initiation (condensed for production)
-    console.log(`[Payout] Transfer attempt ${retryAttempt + 1}: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
-    
-    // Get nonce using raw RPC call
-    const nonce = await getRawNonce(walletAddress);
-    
-    // Gas multiplier: 8x base + 2x per retry attempt (more aggressive for reliability)
-    // Attempt 0: 8x (~16000 gwei, ~1.6 KAS), Attempt 1: 10x (~20000 gwei, ~2 KAS), etc.
-    const gasMultiplier = BigInt(8 + retryAttempt * 2);
-    const networkGasPrice = await getNetworkGasPrice();
-    const gasPrice = networkGasPrice * gasMultiplier;
-    console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei (${gasMultiplier}x), nonce: ${nonce}`);
-    
-    // Encode the transfer function call
-    const iface = new ethers.Interface(ERC20_ABI);
-    const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
-    
-    // Use EIP-1559 transaction
-    const tx = {
-      to: tokenContract,
-      data: data,
-      nonce: nonce,
-      gasLimit: 100000n,
-      maxFeePerGas: gasPrice,
-      maxPriorityFeePerGas: gasPrice / 2n,
-      chainId: KASPLEX_CHAIN_ID,
-      type: 2,
-    };
-    
-    // Sign and broadcast
-    const signedTx = await wallet.signTransaction(tx);
-    
-    const sendResponse = await fetch(KASPLEX_EVM_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_sendRawTransaction',
-        params: [signedTx],
-      }),
-    });
-    
-    const sendData = await sendResponse.json();
-    
-    if (sendData.error) {
-      console.error('[FastSubmit] RPC error:', sendData.error);
-      return { success: false, error: sendData.error.message || 'Transaction rejected' };
+    for (let nonceRetry = 0; nonceRetry < maxNonceRetries; nonceRetry++) {
+      try {
+        const wallet = new ethers.Wallet(privateKey);
+        const walletAddress = wallet.address;
+        const amountBigInt = BigInt(amount);
+        
+        // Log transfer initiation (condensed for production)
+        console.log(`[Payout] Transfer attempt ${retryAttempt + 1}${nonceRetry > 0 ? ` (nonce retry ${nonceRetry})` : ''}: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
+        
+        // Get nonce using NonceManager (tracks locally, fetches when stale)
+        const nonce = await nonceManager.getNextNonce(walletAddress, () => getRawNonce(walletAddress));
+        
+        // Gas multiplier: 8x base + 2x per retry attempt (more aggressive for reliability)
+        // Attempt 0: 8x (~16000 gwei, ~1.6 KAS), Attempt 1: 10x (~20000 gwei, ~2 KAS), etc.
+        const gasMultiplier = BigInt(8 + retryAttempt * 2);
+        const networkGasPrice = await getNetworkGasPrice();
+        const gasPrice = networkGasPrice * gasMultiplier;
+        console.log(`  Gas price: ${Number(gasPrice) / 1e9} gwei (${gasMultiplier}x), nonce: ${nonce}`);
+        
+        // Encode the transfer function call
+        const iface = new ethers.Interface(ERC20_ABI);
+        const data = iface.encodeFunctionData('transfer', [toAddress, amountBigInt]);
+        
+        // Use EIP-1559 transaction
+        const tx = {
+          to: tokenContract,
+          data: data,
+          nonce: nonce,
+          gasLimit: 100000n,
+          maxFeePerGas: gasPrice,
+          maxPriorityFeePerGas: gasPrice / 2n,
+          chainId: KASPLEX_CHAIN_ID,
+          type: 2,
+        };
+        
+        // Sign and broadcast
+        const signedTx = await wallet.signTransaction(tx);
+        
+        const sendResponse = await fetch(KASPLEX_EVM_RPC, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'eth_sendRawTransaction',
+            params: [signedTx],
+          }),
+        });
+        
+        const sendData = await sendResponse.json();
+        
+        if (sendData.error) {
+          const errorMsg = sendData.error.message || 'Transaction rejected';
+          console.error('[FastSubmit] RPC error:', sendData.error);
+          
+          // Check if this is a nonce-related error - pass full error object for code/data checks
+          if (nonceManager.handleNonceError(sendData.error) && nonceRetry < maxNonceRetries - 1) {
+            console.log(`[FastSubmit] Retrying with fresh nonce (attempt ${nonceRetry + 2}/${maxNonceRetries})`);
+            lastError = errorMsg;
+            continue; // Retry with fresh nonce
+          }
+          
+          return { success: false, error: errorMsg };
+        }
+        
+        const txHash = sendData.result;
+        console.log(`[FastSubmit] Transaction broadcast: ${txHash}`);
+        
+        return { success: true, txHash };
+      } catch (error: any) {
+        console.error('[FastSubmit] Error:', error);
+        lastError = error.message || 'Broadcast failed';
+        
+        // Check if this is a nonce-related error - pass full error object
+        if (nonceManager.handleNonceError(error) && nonceRetry < maxNonceRetries - 1) {
+          console.log(`[FastSubmit] Retrying with fresh nonce (attempt ${nonceRetry + 2}/${maxNonceRetries})`);
+          continue;
+        }
+        
+        return { success: false, error: lastError };
+      }
     }
     
-    const txHash = sendData.result;
-    console.log(`[FastSubmit] Transaction broadcast: ${txHash}`);
-    
-    return { success: true, txHash };
-  } catch (error: any) {
-    console.error('[FastSubmit] Error:', error);
-    return { success: false, error: error.message || 'Broadcast failed' };
-  }
+    return { success: false, error: `Max nonce retries exceeded: ${lastError}` };
+  });
 }
 
 // Check transaction confirmation status
@@ -276,6 +392,7 @@ async function getNetworkGasPrice(): Promise<bigint> {
 }
 
 // Internal function to attempt a single transfer
+// Returns rawError for proper nonce error detection by caller
 async function attemptTransfer(
   wallet: ethers.Wallet,
   tokenContract: string,
@@ -284,7 +401,7 @@ async function attemptTransfer(
   decimals: number,
   gasMultiplier: bigint,
   nonceOverride?: number
-): Promise<TransferResult & { shouldRetry?: boolean }> {
+): Promise<TransferResult & { shouldRetry?: boolean; rawError?: any }> {
   const walletAddress = wallet.address;
   const amountBigInt = BigInt(amount);
   
@@ -332,15 +449,19 @@ async function attemptTransfer(
   if (sendData.error) {
     console.error('RPC error:', sendData.error);
     const errorMsg = sendData.error.message || '';
+    
+    // Check for nonce-related errors and reset cache for caller
+    const isNonceError = nonceManager.handleNonceError(sendData.error);
+    
     // Check if we should retry with higher gas
-    const shouldRetry = errorMsg.includes('underpriced') || 
-                        errorMsg.includes('gas') ||
-                        errorMsg.includes('nonce') ||
-                        errorMsg.includes('replacement');
+    const shouldRetry = isNonceError ||
+                        errorMsg.includes('underpriced') || 
+                        errorMsg.includes('gas');
     return {
       success: false,
       error: sendData.error.message || 'Transaction rejected by network',
       shouldRetry,
+      rawError: sendData.error, // Include full error object for caller
     };
   }
   
@@ -406,6 +527,8 @@ async function attemptTransfer(
   }
 }
 
+// Synchronous transfer with confirmation wait (for admin payouts)
+// SECURITY: Uses NonceManager lock to prevent concurrent nonce collisions
 export async function transferERC20(
   tokenContract: string,
   toAddress: string,
@@ -421,65 +544,82 @@ export async function transferERC20(
     };
   }
 
-  try {
-    const wallet = new ethers.Wallet(privateKey);
-    const walletAddress = wallet.address;
-    
-    // Log transfer initiation (condensed for production)
-    console.log(`[Payout] Sync transfer: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
-    
-    // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
-    // Limited to 3 attempts to fit within browser timeout (~45s total)
-    // More aggressive multipliers for reliability: 8x, 12x, 16x
-    const gasMultipliers = [8n, 12n, 16n];
-    
-    for (let i = 0; i < gasMultipliers.length; i++) {
-      const result = await attemptTransfer(
-        wallet,
-        tokenContract,
-        toAddress,
-        amount,
-        decimals,
-        gasMultipliers[i]
-      );
+  // CRITICAL: Acquire lock to serialize transaction submissions
+  // This prevents race conditions where two payouts get the same nonce
+  return nonceManager.acquireLock(async () => {
+    try {
+      const wallet = new ethers.Wallet(privateKey);
+      const walletAddress = wallet.address;
       
-      if (result.success) {
-        return result;
+      // Log transfer initiation (condensed for production)
+      console.log(`[Payout] Sync transfer: ${formatTokenAmount(amount, decimals)} tokens to ${toAddress.slice(0, 8)}...`);
+      
+      // Progressive gas multipliers for retries (Kasplex RPC can be finicky)
+      // Limited to 3 attempts to fit within browser timeout (~45s total)
+      // More aggressive multipliers for reliability: 8x, 12x, 16x
+      const gasMultipliers = [8n, 12n, 16n];
+      
+      for (let i = 0; i < gasMultipliers.length; i++) {
+        // Get nonce from NonceManager (local tracking to avoid races)
+        const nonce = await nonceManager.getNextNonce(walletAddress, () => getRawNonce(walletAddress));
+        
+        const result = await attemptTransfer(
+          wallet,
+          tokenContract,
+          toAddress,
+          amount,
+          decimals,
+          gasMultipliers[i],
+          nonce // Pass nonce explicitly
+        );
+        
+        if (result.success) {
+          return result;
+        }
+        
+        // Check for nonce-related errors and reset cache - use rawError for full object
+        // Non-RPC errors (reverted, timeout) never have rawError and are never nonce-related
+        if (result.rawError) {
+          nonceManager.handleNonceError(result.rawError);
+        }
+        
+        // Don't retry if it's a permanent failure
+        if (!result.shouldRetry) {
+          return result;
+        }
+        
+        // Brief wait before retry
+        if (i < gasMultipliers.length - 1) {
+          console.log(`Retrying with higher gas (attempt ${i + 2}/${gasMultipliers.length})...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
       
-      // Don't retry if it's a permanent failure
-      if (!result.shouldRetry) {
-        return result;
+      return {
+        success: false,
+        error: 'Transaction failed after multiple retry attempts. The network may be congested.',
+      };
+    } catch (error: any) {
+      console.error('ERC-20 transfer failed:', error);
+      
+      // Check for nonce-related errors
+      nonceManager.handleNonceError(error);
+      
+      let errorMessage = 'Transaction failed';
+      if (error.code === 'INSUFFICIENT_FUNDS') {
+        errorMessage = 'Insufficient gas funds in paymaster wallet';
+      } else if (error.code === 'CALL_EXCEPTION') {
+        errorMessage = 'Contract call failed - check token balance and allowance';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
-      // Brief wait before retry
-      if (i < gasMultipliers.length - 1) {
-        console.log(`Retrying with higher gas (attempt ${i + 2}/${gasMultipliers.length})...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
-    
-    return {
-      success: false,
-      error: 'Transaction failed after multiple retry attempts. The network may be congested.',
-    };
-  } catch (error: any) {
-    console.error('ERC-20 transfer failed:', error);
-    
-    let errorMessage = 'Transaction failed';
-    if (error.code === 'INSUFFICIENT_FUNDS') {
-      errorMessage = 'Insufficient gas funds in paymaster wallet';
-    } else if (error.code === 'CALL_EXCEPTION') {
-      errorMessage = 'Contract call failed - check token balance and allowance';
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    return {
-      success: false,
-      error: errorMessage,
-    };
-  }
+  });
 }
 
 export async function estimateTransferGas(

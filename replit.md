@@ -118,3 +118,38 @@ Action: Rate limit (10 requests per minute)
 *   **Igra Network**: Planned future integration for multi-project support.
 *   **Neon Serverless**: PostgreSQL database hosting (currently used for persistence).
 *   **$BMT Token (ERC-20)**: Custom token contract on Kasplex L2 for rewards.
+
+### Network Configuration (Kasplex L2)
+
+The payout system connects to Kasplex Layer 2 (EVM-compatible). Network is selected via the `KASPLEX_NETWORK` environment variable.
+
+| Setting | Testnet | Mainnet (Default) |
+|---------|---------|-------------------|
+| Chain ID | 167012 | 202555 |
+| RPC URL | https://rpc.kasplextest.xyz | https://evmrpc.kasplex.org |
+| Explorer | https://frontend.kasplextest.xyz | https://explorer.kasplex.org |
+| Name | kasplex-testnet | kasplex-l2 (Igra) |
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `KASPLEX_NETWORK` | Set to `testnet` for testing, omit for mainnet/Igra |
+| `PAYMASTER_PRIVATE_KEY` | Private key for the paymaster wallet (distributes $BMT rewards) |
+| `VITE_THIRDWEB_CLIENT_ID` | ThirdWeb client ID for wallet connections |
+
+**Security Notes (Dec 2025):**
+
+*   **Nonce Race Prevention**: NonceManager with mutex lock serializes all payouts. Local nonce tracking avoids chain queries between rapid payouts. Auto-retry on "nonce too low" errors (up to 3 attempts).
+*   **Gas Strategy**: 8x base gas + 2x per retry attempt for reliable transaction inclusion.
+*   **Circuit Breaker**: Payout system can be disabled via admin controls if issues detected.
+*   **Audit Logging**: All paymaster transactions logged to `paymaster_audit_log` table.
+
+**Chain ID Mapping:**
+
+| Network Name | Chain ID | Status |
+|--------------|----------|--------|
+| Kasplex L2 (Igra) | 202555 | **ACTIVE** - Production mainnet |
+| Kasplex Testnet | 167012 | Testing only |
+
+**Important**: When transitioning networks, ensure the `PAYMASTER_PRIVATE_KEY` corresponds to a wallet with sufficient $BMT balance on the target network. The paymaster wallet address is derived from the private key - there is no separate address configuration.
