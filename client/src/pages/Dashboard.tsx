@@ -76,13 +76,30 @@ function mapEnrollmentToDisplay(enrollment: EnrollmentWithCourse): CourseDisplay
 
 function mapRewardToTransaction(reward: Reward, courses: Course[]): RewardTransaction {
   const course = courses.find(c => c.id === reward.courseId);
+  
+  // Properly map all reward statuses
+  let status: 'confirmed' | 'pending' | 'processing' | 'failed';
+  switch (reward.status) {
+    case 'confirmed':
+      status = 'confirmed';
+      break;
+    case 'pending':
+      status = 'pending';
+      break;
+    case 'processing':
+      status = 'processing';
+      break;
+    default:
+      status = 'failed';
+  }
+  
   return {
     id: reward.id,
     type: reward.type === 'course_completion' ? 'course_completion' : 'quiz_bonus',
     courseName: course?.title || 'Unknown Course',
     amount: reward.amount,
     txHash: reward.txHash || undefined,
-    status: reward.status === 'confirmed' ? 'confirmed' : reward.status === 'pending' ? 'pending' : 'failed',
+    status,
     date: reward.createdAt ? new Date(reward.createdAt).toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric', 
@@ -206,6 +223,7 @@ export default function Dashboard() {
   const { data: rewards = [], isLoading: rewardsLoading } = useQuery<Reward[]>({
     queryKey: ['/api/rewards'],
     retry: false,
+    refetchInterval: 10000, // Refresh every 10 seconds to catch status updates
   });
 
   const enrolledCourses: CourseDisplay[] = enrollments
