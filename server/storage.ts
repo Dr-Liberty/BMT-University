@@ -30,6 +30,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -114,9 +115,10 @@ export interface IStorage {
   createAuthNonce(walletAddress: string, nonce: string, expiresAt: Date): Promise<void>;
   getAuthNonce(walletAddress: string): Promise<{ nonce: string; expiresAt: Date } | undefined>;
   deleteAuthNonce(walletAddress: string): Promise<void>;
-  createAuthSession(userId: string, token: string, walletAddress: string, expiresAt: Date): Promise<void>;
-  getAuthSession(token: string): Promise<{ userId: string; walletAddress: string; expiresAt: Date } | undefined>;
+  createAuthSession(userId: string, token: string, walletAddress: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<void>;
+  getAuthSession(token: string): Promise<{ userId: string; walletAddress: string; expiresAt: Date; ipAddress?: string | null; userAgent?: string | null } | undefined>;
   deleteAuthSession(token: string): Promise<void>;
+  deleteExpiredSessions(): Promise<number>;
   
   getPaymasterConfig(): Promise<PaymasterConfig | undefined>;
   createPaymasterConfig(config: InsertPaymasterConfig): Promise<PaymasterConfig>;
@@ -160,6 +162,8 @@ export interface IStorage {
   getDeviceFingerprintsByHash(fingerprintHash: string): Promise<DeviceFingerprint[]>;
   getDeviceFingerprintsByIp(ipAddress: string): Promise<DeviceFingerprint[]>;
   getDeviceFingerprintsByUser(userId: string): Promise<DeviceFingerprint[]>;
+  // GDPR: Delete old fingerprints (retention policy)
+  deleteOldFingerprints(retentionDays: number): Promise<number>;
   
   // Suspicious activity methods
   logSuspiciousActivity(activity: InsertSuspiciousActivity): Promise<SuspiciousActivity>;
@@ -191,6 +195,10 @@ export interface IStorage {
   // Known sink address methods
   isKnownSinkAddress(address: string): Promise<{ isSink: boolean; label?: string; addressType?: string }>;
   addKnownSinkAddress(data: { address: string; addressType: string; label?: string; isFlagged?: boolean }): Promise<void>;
+  
+  // SECURITY: Atomic payout operations (prevent partial updates)
+  confirmPayoutAtomically(rewardId: string, txHash: string, blockNumber?: number): Promise<boolean>;
+  failPayoutAtomically(rewardId: string, walletAddress: string, amount: number): Promise<boolean>;
 }
 
 const defaultAboutPage: Omit<AboutPage, 'id'> = {
@@ -831,22 +839,30 @@ export class DatabaseStorage implements IStorage {
     await db.delete(authNonces).where(eq(authNonces.walletAddress, walletAddress));
   }
 
-  async createAuthSession(userId: string, token: string, walletAddress: string, expiresAt: Date): Promise<void> {
-    await db.insert(authSessions).values({ userId, token, walletAddress, expiresAt });
+  async createAuthSession(userId: string, token: string, walletAddress: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<void> {
+    await db.insert(authSessions).values({ userId, token, walletAddress, expiresAt, ipAddress, userAgent });
   }
 
-  async getAuthSession(token: string): Promise<{ userId: string; walletAddress: string; expiresAt: Date } | undefined> {
+  async getAuthSession(token: string): Promise<{ userId: string; walletAddress: string; expiresAt: Date; ipAddress?: string | null; userAgent?: string | null } | undefined> {
     const [row] = await db.select().from(authSessions)
       .where(and(
         eq(authSessions.token, token),
         gt(authSessions.expiresAt, new Date())
       ));
     if (!row) return undefined;
-    return { userId: row.userId, walletAddress: row.walletAddress, expiresAt: row.expiresAt };
+    return { userId: row.userId, walletAddress: row.walletAddress, expiresAt: row.expiresAt, ipAddress: row.ipAddress, userAgent: row.userAgent };
   }
 
   async deleteAuthSession(token: string): Promise<void> {
     await db.delete(authSessions).where(eq(authSessions.token, token));
+  }
+  
+  // SECURITY: Cleanup expired sessions (GDPR compliance)
+  async deleteExpiredSessions(): Promise<number> {
+    const result = await db.delete(authSessions)
+      .where(sql`${authSessions.expiresAt} < NOW()`)
+      .returning({ id: authSessions.id });
+    return result.length;
   }
 
   async getPaymasterConfig(): Promise<PaymasterConfig | undefined> {
@@ -1116,6 +1132,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(deviceFingerprints.userId, userId))
       .orderBy(desc(deviceFingerprints.createdAt));
   }
+  
+  // GDPR: Delete fingerprints older than retention period
+  async deleteOldFingerprints(retentionDays: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    
+    const result = await db.delete(deviceFingerprints)
+      .where(sql`${deviceFingerprints.lastSeenAt} < ${cutoffDate}`)
+      .returning({ id: deviceFingerprints.id });
+    return result.length;
+  }
 
   // Suspicious activity methods
   async logSuspiciousActivity(activity: InsertSuspiciousActivity): Promise<SuspiciousActivity> {
@@ -1351,6 +1378,61 @@ export class DatabaseStorage implements IStorage {
         isFlagged: data.isFlagged || false,
       })
       .onConflictDoNothing();
+  }
+  
+  // ============ ATOMIC PAYOUT OPERATIONS (Transaction Safety) ============
+  
+  // SECURITY: Confirm payout atomically - updates reward + payout transaction in single transaction
+  async confirmPayoutAtomically(rewardId: string, txHash: string, blockNumber?: number): Promise<boolean> {
+    try {
+      await db.transaction(async (tx) => {
+        // Update reward status
+        await tx.update(rewards)
+          .set({
+            status: 'confirmed',
+            processedAt: new Date(),
+          })
+          .where(eq(rewards.id, rewardId));
+        
+        // Update all associated payout transactions
+        await tx.update(payoutTransactions)
+          .set({
+            status: 'completed',
+            txHash: txHash,
+            blockNumber: blockNumber,
+            processedAt: new Date(),
+          })
+          .where(eq(payoutTransactions.rewardId, rewardId));
+      });
+      return true;
+    } catch (error) {
+      console.error('[Atomic Payout] Confirm transaction failed:', error);
+      return false;
+    }
+  }
+  
+  // SECURITY: Fail payout atomically - updates reward status + rolls back daily payout limit
+  async failPayoutAtomically(rewardId: string, walletAddress: string, amount: number): Promise<boolean> {
+    try {
+      await db.transaction(async (tx) => {
+        // Update reward status to failed
+        await tx.update(rewards)
+          .set({ status: 'failed' })
+          .where(eq(rewards.id, rewardId));
+        
+        // Rollback daily payout limit
+        const today = new Date().toISOString().split('T')[0];
+        await tx.execute(sql`
+          UPDATE daily_payout_limits 
+          SET amount_used = GREATEST(0, amount_used - ${amount})
+          WHERE wallet_address = ${walletAddress.toLowerCase()} AND date = ${today}
+        `);
+      });
+      return true;
+    } catch (error) {
+      console.error('[Atomic Payout] Fail transaction failed:', error);
+      return false;
+    }
   }
 }
 

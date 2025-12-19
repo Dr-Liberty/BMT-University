@@ -92,7 +92,18 @@ function verifySignature(message: string, signature: string, expectedAddress: st
   }
 }
 
+// SECURITY: Extract client IP considering trusted proxies
+function getClientIP(req: any): string {
+  // Trust X-Forwarded-For from Replit's reverse proxy
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+}
+
 // Auth middleware - validates session token and attaches user to request
+// SECURITY: Enforces session binding to prevent token hijacking
 async function authMiddleware(req: any, res: any, next: any) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
@@ -102,6 +113,23 @@ async function authMiddleware(req: any, res: any, next: any) {
   const session = await storage.getAuthSession(token);
   if (!session || new Date() > session.expiresAt) {
     return res.status(401).json({ error: 'Session expired' });
+  }
+  
+  // SECURITY: Session binding validation - prevent token hijacking
+  const currentIP = getClientIP(req);
+  const currentUA = req.headers['user-agent'] || 'unknown';
+  
+  // Validate IP binding (strict - IP must match)
+  if (session.ipAddress && session.ipAddress !== currentIP) {
+    console.warn(`[Session Binding] IP mismatch for user ${session.userId}: stored=${session.ipAddress}, current=${currentIP}`);
+    return res.status(401).json({ error: 'Session invalid - please login again' });
+  }
+  
+  // Validate User Agent binding (lenient - just log if different, don't block)
+  // Some browsers update UA strings, so we only warn, not reject
+  if (session.userAgent && session.userAgent !== currentUA) {
+    console.warn(`[Session Binding] UA mismatch for user ${session.userId}: stored=${session.userAgent?.substring(0, 50)}, current=${currentUA.substring(0, 50)}`);
+    // Allow but flag for monitoring - UA changes are more common than IP changes
   }
   
   const user = await storage.getUser(session.userId);
@@ -170,8 +198,27 @@ export async function registerRoutes(
     }
   });
 
-  // ============ SECURITY HEADERS (CSP) ============
+  // ============ SECURITY HEADERS (CSP + CORS) ============
   app.use((req, res, next) => {
+    // SECURITY: CORS hardening for production
+    const origin = req.headers.origin;
+    const isProduction = process.env.NODE_ENV === 'production';
+    const allowedOrigins = isProduction 
+      ? [process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.replit.app` : ''].filter(Boolean)
+      : ['http://localhost:5000', 'http://0.0.0.0:5000'];
+    
+    if (origin && (allowedOrigins.includes(origin) || !isProduction)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
+    
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    
     res.setHeader(
       'Content-Security-Policy',
       "default-src 'self'; " +
@@ -190,6 +237,24 @@ export async function registerRoutes(
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
+  
+  // ============ GDPR CLEANUP JOB (runs every 24 hours) ============
+  const FINGERPRINT_RETENTION_DAYS = 90; // 90-day retention period
+  const runGdprCleanup = async () => {
+    try {
+      const deletedSessions = await storage.deleteExpiredSessions();
+      const deletedFingerprints = await storage.deleteOldFingerprints(FINGERPRINT_RETENTION_DAYS);
+      if (deletedSessions > 0 || deletedFingerprints > 0) {
+        console.log(`[GDPR Cleanup] Deleted ${deletedSessions} expired sessions, ${deletedFingerprints} old fingerprints`);
+      }
+    } catch (error) {
+      console.error('[GDPR Cleanup] Error:', error);
+    }
+  };
+  
+  // Run cleanup on startup and every 24 hours
+  runGdprCleanup();
+  setInterval(runGdprCleanup, 24 * 60 * 60 * 1000);
 
   // ============ AUTH ============
   app.post("/api/auth/nonce", async (req, res) => {
@@ -315,9 +380,12 @@ export async function registerRoutes(
       }
       
       // Create session with shorter expiry for security
+      // SECURITY: Bind session to IP and user agent for hijacking detection
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours (reduced from 7 days)
-      await storage.createAuthSession(user.id, token, walletAddress, expiresAt);
+      const sessionIp = clientIp;
+      const sessionUserAgent = req.headers['user-agent'] || undefined;
+      await storage.createAuthSession(user.id, token, walletAddress, expiresAt, sessionIp, sessionUserAgent);
       
       res.json({ token, user, farmingWarning });
     } catch (error) {
@@ -1984,6 +2052,7 @@ export async function registerRoutes(
       });
       
       // Background confirmation polling (non-blocking)
+      // SECURITY: Uses atomic transactions to prevent partial updates
       (async () => {
         const maxPolls = 120; // 2 minutes max
         for (let i = 0; i < maxPolls; i++) {
@@ -1994,32 +2063,30 @@ export async function registerRoutes(
             
             if (status.confirmed) {
               if (status.success) {
-                await storage.updateReward(rewardId, {
-                  status: 'confirmed',
-                  processedAt: new Date(),
-                });
+                // SECURITY: Atomic confirmation - updates reward + payout in single transaction
+                const confirmed = await storage.confirmPayoutAtomically(
+                  rewardId, 
+                  result.txHash!, 
+                  status.blockNumber
+                );
                 
-                // Daily payout already pre-reserved, no need to record again
-                
-                // Update associated payout transactions
-                const payouts = await storage.getPayoutsByReward(rewardId);
-                for (const payout of payouts) {
-                  await storage.updatePayoutTransaction(payout.id, {
-                    status: 'completed',
-                    txHash: result.txHash,
-                    processedAt: new Date(),
-                  });
+                if (confirmed) {
+                  console.log(`[Claim] CONFIRMED (atomic): ${reward.amount} BMT to ${user.walletAddress}, block ${status.blockNumber}`);
+                } else {
+                  console.error(`[Claim] Atomic confirmation failed for ${result.txHash}`);
                 }
-                
-                console.log(`[Claim] CONFIRMED: ${reward.amount} BMT to ${user.walletAddress}, block ${status.blockNumber}`);
               } else {
-                await storage.updateReward(rewardId, { status: 'failed' });
-                
-                // Rollback the pre-reserved daily payout on failed transaction
-                const rollbackDate = new Date().toISOString().split('T')[0];
+                // SECURITY: Atomic failure - updates reward status + rolls back daily limit
                 if (user.walletAddress) {
-                  await storage.rollbackDailyPayout(user.walletAddress, rollbackDate, reward.amount);
-                  console.log(`[Claim] Rolled back daily payout: ${reward.amount} BMT for ${user.walletAddress}`);
+                  const failed = await storage.failPayoutAtomically(
+                    rewardId,
+                    user.walletAddress,
+                    reward.amount
+                  );
+                  
+                  if (failed) {
+                    console.log(`[Claim] FAILED (atomic): Rolled back ${reward.amount} BMT for ${user.walletAddress}`);
+                  }
                 }
                 
                 console.error(`[Claim] Transaction reverted: ${result.txHash}`);

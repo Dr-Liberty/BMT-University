@@ -46,6 +46,11 @@ Design approach: Wallet-centric authentication (no traditional credentials), use
 ### Security & Performance
 
 *   **Authentication Security**: Proper ECDSA signature verification using ethers.verifyMessage to validate wallet signatures.
+*   **Session Binding (Dec 2025)**: Sessions bound to IP address and user agent at creation. IP mismatches reject requests; UA mismatches logged for monitoring.
+*   **CORS Hardening (Dec 2025)**: Dynamic origin validation - production restricts to Replit domains only, development allows localhost.
+*   **Atomic Payout Transactions (Dec 2025)**: Reward confirmation/failure uses Drizzle ORM transactions to prevent partial updates during blockchain callbacks.
+*   **GDPR Data Retention (Dec 2025)**: 90-day device fingerprint cleanup, expired session deletion runs every 24 hours.
+*   **SHA-256 Fingerprint Hashing (Dec 2025)**: Upgraded from weak 32-bit hash to SHA-256 for collision resistance.
 *   **Comprehensive Rate Limiting**: 
     - Auth endpoints: 10 requests per 15 minutes per IP
     - Quiz submission: 5 per minute with 5-second per-user throttle

@@ -435,6 +435,9 @@ export const authSessions = pgTable("auth_sessions", {
   walletAddress: varchar("wallet_address", { length: 100 }).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  // SECURITY: Session binding - IP and user agent for session hijacking detection
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
 });
 
 export const authNonces = pgTable("auth_nonces", {
