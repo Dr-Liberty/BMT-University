@@ -95,11 +95,17 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
   
   // Handle claim with signature
   const handleClaim = async (rewardId: string) => {
+    console.log('[CLAIM DEBUG] handleClaim called for:', rewardId);
+    console.log('[CLAIM DEBUG] claimingRef current:', Array.from(claimingRef.current));
+    console.log('[CLAIM DEBUG] isDemoWallet:', isDemoWallet, 'isConnected:', isConnected, 'address:', address);
+    
     // Synchronous double-click prevention using ref
     if (claimingRef.current.has(rewardId)) {
+      console.log('[CLAIM DEBUG] BLOCKED by ref - already claiming');
       return;
     }
     claimingRef.current.add(rewardId);
+    console.log('[CLAIM DEBUG] Added to ref, proceeding...');
     
     if (isDemoWallet) {
       claimingRef.current.delete(rewardId);
@@ -123,17 +129,21 @@ export default function RewardHistory({ transactions, maxHeight }: RewardHistory
     
     try {
       setSigningRewardId(rewardId);
+      console.log('[CLAIM DEBUG] Set signingRewardId, requesting signature...');
       
       // Generate timestamp and message
       const timestamp = Date.now().toString();
       const message = `Claim reward ${rewardId} from BMT University at ${timestamp}`;
       
       // Request signature from wallet
+      console.log('[CLAIM DEBUG] About to call signMessageAsync');
       const signature = await signMessageAsync({ message });
+      console.log('[CLAIM DEBUG] Got signature, submitting claim...');
       
       // Submit claim with signature
       claimMutation.mutate({ rewardId, signature, timestamp });
     } catch (error: any) {
+      console.log('[CLAIM DEBUG] Error caught:', error);
       claimingRef.current.delete(rewardId);
       // User rejected signature
       if (error.name === 'UserRejectedRequestError' || error.message?.includes('User rejected')) {
