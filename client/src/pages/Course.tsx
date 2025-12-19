@@ -71,10 +71,11 @@ function formatDuration(minutes: number | null | undefined): string {
 function getVideoEmbedUrl(url: string): string | null {
   if (!url) return null;
   
-  // YouTube - various formats
+  // YouTube - various formats (use privacy-enhanced embed for better compatibility)
   const youtubeMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   if (youtubeMatch) {
-    return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+    // Use youtube-nocookie.com for privacy-enhanced mode (often better embed compatibility)
+    return `https://www.youtube-nocookie.com/embed/${youtubeMatch[1]}`;
   }
   
   // Vimeo
@@ -346,6 +347,10 @@ export default function Course() {
                   alt={lesson.title}
                   className="w-full max-h-80 object-cover rounded-lg"
                   data-testid={`img-lesson-${lesson.id}`}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
                 />
               </div>
             )}
@@ -353,7 +358,7 @@ export default function Course() {
               isTwitterUrl(lesson.videoUrl) ? (
                 <TwitterEmbed url={lesson.videoUrl} />
               ) : (
-                <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden">
+                <div className="aspect-video bg-muted rounded-lg mb-4 overflow-hidden relative">
                   {isDirectVideo(lesson.videoUrl) ? (
                     <video
                       src={lesson.videoUrl}
@@ -364,14 +369,24 @@ export default function Course() {
                       Your browser does not support the video tag.
                     </video>
                   ) : (
-                    <iframe
-                      src={getVideoEmbedUrl(lesson.videoUrl) || lesson.videoUrl}
-                      className="w-full h-full"
-                      allowFullScreen
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      title={lesson.title}
-                      data-testid={`iframe-lesson-${lesson.id}`}
-                    />
+                    <>
+                      <iframe
+                        src={getVideoEmbedUrl(lesson.videoUrl) || lesson.videoUrl}
+                        className="w-full h-full"
+                        allowFullScreen
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        title={lesson.title}
+                        data-testid={`iframe-lesson-${lesson.id}`}
+                      />
+                      <a
+                        href={lesson.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute bottom-2 right-2 text-xs text-kaspa-cyan hover:underline bg-black/50 px-2 py-1 rounded"
+                      >
+                        Watch on YouTube
+                      </a>
+                    </>
                   )}
                 </div>
               )
@@ -394,6 +409,10 @@ export default function Course() {
                             alt={block.caption || lesson.title}
                             className="w-full max-h-96 object-contain rounded-lg bg-muted/30"
                             data-testid={`img-content-block-${block.id}`}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
                           />
                           {block.caption && (
                             <p className="text-xs text-muted-foreground mt-2 italic text-center">
