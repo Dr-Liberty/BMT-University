@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useDisconnect, useConnect, useSignMessage } from 'wagmi';
+import { useAccount, useDisconnect, useConnect, useSignMessage, useSwitchChain } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
 import { getAuthToken, setAuthToken, clearAuthToken, setWalletAddress } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Play, Wallet, LogOut, AlertCircle } from 'lucide-react';
+import { Play, Wallet, LogOut, AlertCircle, RefreshCw } from 'lucide-react';
 import type { User } from '@shared/schema';
 import { kasplexL2 } from '@/lib/wagmi';
 
@@ -43,8 +43,32 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   
   const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
-  const { connect, connectors, isPending } = useConnect();
+  const { connectAsync, connectors, isPending, error: connectError } = useConnect();
   const { signMessageAsync } = useSignMessage();
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
+
+  // Show connection errors to the user
+  useEffect(() => {
+    if (connectError) {
+      console.error('[Wallet] Connection error:', connectError);
+      let errorMessage = 'Failed to connect wallet. Please try again.';
+      
+      // Parse common error types
+      if (connectError.message?.includes('User rejected')) {
+        errorMessage = 'Connection was rejected. Please approve the connection in your wallet.';
+      } else if (connectError.message?.includes('Connector not found')) {
+        errorMessage = 'No wallet extension found. Please install MetaMask or another EVM wallet.';
+      } else if (connectError.message?.includes('Chain')) {
+        errorMessage = 'Network configuration issue. Please check your wallet settings.';
+      }
+      
+      toast({
+        title: 'Connection Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  }, [connectError, toast]);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -363,16 +387,47 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
     );
   }
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    console.log('[Wallet] Attempting to connect...');
+    console.log('[Wallet] Available connectors:', connectors.map(c => ({ id: c.id, name: c.name })));
+    
     const injectedConnector = connectors.find(c => c.id === 'injected');
-    if (injectedConnector) {
-      connect({ connector: injectedConnector });
-    } else if (connectors.length > 0) {
-      connect({ connector: connectors[0] });
-    } else {
+    const connector = injectedConnector || connectors[0];
+    
+    if (!connector) {
+      console.error('[Wallet] No connectors available');
       toast({
         title: 'No Wallet Found',
         description: 'Please install MetaMask or another EVM wallet extension.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    console.log('[Wallet] Using connector:', connector.id, connector.name);
+    
+    try {
+      await connectAsync({ connector });
+      console.log('[Wallet] Connection successful');
+    } catch (error) {
+      console.error('[Wallet] Connection failed:', error);
+      
+      let errorMessage = 'Failed to connect wallet. Please try again.';
+      const errorStr = error instanceof Error ? error.message : String(error);
+      
+      if (errorStr.includes('User rejected') || errorStr.includes('user rejected')) {
+        errorMessage = 'Connection was rejected. Please approve the connection in your wallet.';
+      } else if (errorStr.includes('already pending')) {
+        errorMessage = 'A connection request is already pending. Please check your wallet extension.';
+      } else if (errorStr.includes('No provider')) {
+        errorMessage = 'No wallet provider found. Please make sure MetaMask or another wallet is installed and unlocked.';
+      } else if (errorStr.includes('Chain') || errorStr.includes('chain')) {
+        errorMessage = 'Network issue. Try adding the IGRA Testnet network to your wallet manually.';
+      }
+      
+      toast({
+        title: 'Connection Failed',
+        description: errorMessage,
         variant: 'destructive',
       });
     }
@@ -385,6 +440,43 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
   const formatAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const handleSwitchNetwork = async () => {
+    console.log('[Wallet] Attempting to switch to Kasplex L2 network...');
+    try {
+      await switchChainAsync({ chainId: kasplexL2.id });
+      console.log('[Wallet] Network switch successful');
+      toast({
+        title: 'Network Switched',
+        description: 'Successfully connected to IGRA Testnet (Kasplex L2)',
+      });
+    } catch (error) {
+      console.error('[Wallet] Network switch failed:', error);
+      const errorStr = error instanceof Error ? error.message : String(error);
+      
+      // If network doesn't exist in wallet, provide manual add instructions
+      if (errorStr.includes('chain has not been added') || errorStr.includes('Unrecognized chain')) {
+        toast({
+          title: 'Network Not Found',
+          description: 'Please add IGRA Testnet manually: RPC https://rpc.kasplex.org, Chain ID 202555',
+          variant: 'destructive',
+          duration: 15000,
+        });
+      } else if (errorStr.includes('User rejected')) {
+        toast({
+          title: 'Switch Cancelled',
+          description: 'Please approve the network switch in your wallet.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Network Switch Failed',
+          description: 'Could not switch to IGRA Testnet. Please add it manually to your wallet.',
+          variant: 'destructive',
+        });
+      }
+    }
   };
 
   const isWrongNetwork = chain && chain.id !== kasplexL2.id;
@@ -406,9 +498,15 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
           variant="destructive"
           data-testid="button-wrong-network"
           className="flex items-center gap-2"
+          onClick={handleSwitchNetwork}
+          disabled={isSwitchingChain}
         >
-          <AlertCircle className="h-4 w-4" />
-          Wrong Network
+          {isSwitchingChain ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <AlertCircle className="h-4 w-4" />
+          )}
+          {isSwitchingChain ? 'Switching...' : 'Switch to IGRA'}
         </Button>
       ) : (
         <div className="flex items-center gap-2">
