@@ -47,28 +47,41 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
 
+  // Detect if user is on mobile
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
   // Show connection errors to the user
   useEffect(() => {
     if (connectError) {
       console.error('[Wallet] Connection error:', connectError);
       let errorMessage = 'Failed to connect wallet. Please try again.';
+      let title = 'Connection Failed';
       
       // Parse common error types
       if (connectError.message?.includes('User rejected')) {
         errorMessage = 'Connection was rejected. Please approve the connection in your wallet.';
-      } else if (connectError.message?.includes('Connector not found')) {
-        errorMessage = 'No wallet extension found. Please install MetaMask or another EVM wallet.';
+      } else if (connectError.message?.includes('Connector not found') || connectError.message?.includes('No provider')) {
+        if (isMobile) {
+          title = 'Open in Wallet App';
+          errorMessage = 'Please open this site inside your MetaMask or Trust Wallet app browser. Mobile browsers cannot connect directly to wallets.';
+        } else {
+          errorMessage = 'No wallet extension found. Please install MetaMask or another EVM wallet.';
+        }
       } else if (connectError.message?.includes('Chain')) {
         errorMessage = 'Network configuration issue. Please check your wallet settings.';
+      } else if (isMobile && !window.ethereum) {
+        title = 'Open in Wallet App';
+        errorMessage = 'Please open this site inside your MetaMask or Trust Wallet app browser.';
       }
       
       toast({
-        title: 'Connection Failed',
+        title,
         description: errorMessage,
         variant: 'destructive',
+        duration: 10000,
       });
     }
-  }, [connectError, toast]);
+  }, [connectError, toast, isMobile]);
 
   useEffect(() => {
     const token = getAuthToken();
