@@ -134,15 +134,15 @@ export default function FeaturedCourses() {
               </TabsTrigger>
               <TabsTrigger value="trending" className="gap-2" data-testid="tab-trending">
                 <TrendingUp className="w-4 h-4" />
-                Trending
+                {t('courses.trending', 'Trending')}
               </TabsTrigger>
               <TabsTrigger value="best" className="gap-2" data-testid="tab-best">
                 <Star className="w-4 h-4" />
-                Best
+                {t('courses.best', 'Best')}
               </TabsTrigger>
               <TabsTrigger value="new" className="gap-2" data-testid="tab-new">
                 <Clock className="w-4 h-4" />
-                New
+                {t('courses.new', 'New')}
               </TabsTrigger>
             </TabsList>
           </Tabs>

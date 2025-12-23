@@ -44,7 +44,8 @@ const en = {
   },
   courses: {
     title: "All Courses", subtitle: "Explore our curriculum from Bitcoin basics to Kaspa development",
-    featured: "Featured Courses", featuredSubtitle: "Begin with our most popular courses",
+    featured: "Featured", featuredSubtitle: "Begin with our most popular courses",
+    trending: "Trending", best: "Best", new: "New",
     viewAll: "View All Courses", beginner: "Beginner", intermediate: "Intermediate", advanced: "Advanced",
     lessons: "lessons", minutes: "min", earn: "Earn", bmt: "BMT",
     startCourse: "Start Course", continueCourse: "Continue", completed: "Completed", enrolled: "enrolled",
@@ -114,7 +115,8 @@ const es = {
   },
   courses: {
     title: "Todos los Cursos", subtitle: "Explora nuestro currículo de fundamentos a desarrollo avanzado",
-    featured: "Cursos Destacados", featuredSubtitle: "Comienza con nuestros cursos más populares",
+    featured: "Destacados", featuredSubtitle: "Comienza con nuestros cursos más populares",
+    trending: "Tendencia", best: "Mejor", new: "Nuevo",
     viewAll: "Ver Todos los Cursos", beginner: "Principiante", intermediate: "Intermedio", advanced: "Avanzado",
     lessons: "lecciones", minutes: "min", earn: "Gana", bmt: "BMT",
     startCourse: "Comenzar Curso", continueCourse: "Continuar", completed: "Completado", enrolled: "inscritos",
@@ -184,7 +186,8 @@ const zh = {
   },
   courses: {
     title: "全部课程", subtitle: "探索我们的课程体系",
-    featured: "精选课程", featuredSubtitle: "从最受欢迎的课程开始",
+    featured: "精选", featuredSubtitle: "从最受欢迎的课程开始",
+    trending: "热门", best: "最佳", new: "最新",
     viewAll: "查看全部课程", beginner: "初级", intermediate: "中级", advanced: "高级",
     lessons: "课时", minutes: "分钟", earn: "获得", bmt: "BMT",
     startCourse: "开始课程", continueCourse: "继续", completed: "已完成", enrolled: "已注册",
@@ -254,7 +257,8 @@ const ja = {
   },
   courses: {
     title: "全コース", subtitle: "包括的なカリキュラムを探索",
-    featured: "注目のコース", featuredSubtitle: "人気のコースから始めましょう",
+    featured: "注目", featuredSubtitle: "人気のコースから始めましょう",
+    trending: "トレンド", best: "ベスト", new: "新着",
     viewAll: "すべてのコースを見る", beginner: "初級", intermediate: "中級", advanced: "上級",
     lessons: "レッスン", minutes: "分", earn: "獲得", bmt: "BMT",
     startCourse: "コースを開始", continueCourse: "続ける", completed: "完了", enrolled: "登録済み",
@@ -324,7 +328,8 @@ const ko = {
   },
   courses: {
     title: "전체 강좌", subtitle: "종합 커리큘럼을 탐색하세요",
-    featured: "추천 강좌", featuredSubtitle: "인기 강좌로 시작하세요",
+    featured: "추천", featuredSubtitle: "인기 강좌로 시작하세요",
+    trending: "인기", best: "최고", new: "신규",
     viewAll: "전체 강좌 보기", beginner: "초급", intermediate: "중급", advanced: "고급",
     lessons: "레슨", minutes: "분", earn: "획득", bmt: "BMT",
     startCourse: "강좌 시작", continueCourse: "계속하기", completed: "완료됨", enrolled: "등록됨",
@@ -394,7 +399,8 @@ const de = {
   },
   courses: {
     title: "Alle Kurse", subtitle: "Erkunde unser umfassendes Curriculum",
-    featured: "Empfohlene Kurse", featuredSubtitle: "Beginne mit unseren beliebtesten Kursen",
+    featured: "Empfohlen", featuredSubtitle: "Beginne mit unseren beliebtesten Kursen",
+    trending: "Beliebt", best: "Beste", new: "Neu",
     viewAll: "Alle Kurse Anzeigen", beginner: "Anfänger", intermediate: "Fortgeschritten", advanced: "Experte",
     lessons: "Lektionen", minutes: "Min", earn: "Verdiene", bmt: "BMT",
     startCourse: "Kurs Starten", continueCourse: "Fortsetzen", completed: "Abgeschlossen", enrolled: "eingeschrieben",
@@ -464,7 +470,8 @@ const fr = {
   },
   courses: {
     title: "Tous les Cours", subtitle: "Explorez notre programme complet",
-    featured: "Cours en Vedette", featuredSubtitle: "Commencez avec nos cours les plus populaires",
+    featured: "Vedette", featuredSubtitle: "Commencez avec nos cours les plus populaires",
+    trending: "Tendance", best: "Meilleur", new: "Nouveau",
     viewAll: "Voir Tous les Cours", beginner: "Débutant", intermediate: "Intermédiaire", advanced: "Avancé",
     lessons: "leçons", minutes: "min", earn: "Gagnez", bmt: "BMT",
     startCourse: "Commencer le Cours", continueCourse: "Continuer", completed: "Terminé", enrolled: "inscrits",
@@ -534,7 +541,8 @@ const pt = {
   },
   courses: {
     title: "Todos os Cursos", subtitle: "Explore nosso currículo abrangente",
-    featured: "Cursos em Destaque", featuredSubtitle: "Comece com nossos cursos mais populares",
+    featured: "Destaque", featuredSubtitle: "Comece com nossos cursos mais populares",
+    trending: "Em Alta", best: "Melhor", new: "Novo",
     viewAll: "Ver Todos os Cursos", beginner: "Iniciante", intermediate: "Intermediário", advanced: "Avançado",
     lessons: "lições", minutes: "min", earn: "Ganhe", bmt: "BMT",
     startCourse: "Iniciar Curso", continueCourse: "Continuar", completed: "Concluído", enrolled: "matriculados",
@@ -604,7 +612,8 @@ const ru = {
   },
   courses: {
     title: "Все Курсы", subtitle: "Изучите нашу полную программу",
-    featured: "Популярные Курсы", featuredSubtitle: "Начните с самых популярных курсов",
+    featured: "Популярные", featuredSubtitle: "Начните с самых популярных курсов",
+    trending: "В тренде", best: "Лучшие", new: "Новые",
     viewAll: "Все Курсы", beginner: "Начинающий", intermediate: "Средний", advanced: "Продвинутый",
     lessons: "уроков", minutes: "мин", earn: "Заработок", bmt: "BMT",
     startCourse: "Начать Курс", continueCourse: "Продолжить", completed: "Завершён", enrolled: "записаны",
@@ -674,7 +683,8 @@ const tr = {
   },
   courses: {
     title: "Tüm Kurslar", subtitle: "Kapsamlı müfredatımızı keşfedin",
-    featured: "Öne Çıkan Kurslar", featuredSubtitle: "En popüler kurslarımızla başlayın",
+    featured: "Öne Çıkan", featuredSubtitle: "En popüler kurslarımızla başlayın",
+    trending: "Popüler", best: "En İyi", new: "Yeni",
     viewAll: "Tüm Kursları Gör", beginner: "Başlangıç", intermediate: "Orta", advanced: "İleri",
     lessons: "ders", minutes: "dk", earn: "Kazan", bmt: "BMT",
     startCourse: "Kursa Başla", continueCourse: "Devam Et", completed: "Tamamlandı", enrolled: "kayıtlı",
@@ -744,7 +754,8 @@ const ar = {
   },
   courses: {
     title: "جميع الدورات", subtitle: "استكشف منهجنا الشامل",
-    featured: "الدورات المميزة", featuredSubtitle: "ابدأ بأكثر دوراتنا شعبية",
+    featured: "مميزة", featuredSubtitle: "ابدأ بأكثر دوراتنا شعبية",
+    trending: "رائج", best: "الأفضل", new: "جديد",
     viewAll: "عرض جميع الدورات", beginner: "مبتدئ", intermediate: "متوسط", advanced: "متقدم",
     lessons: "دروس", minutes: "دقيقة", earn: "اكسب", bmt: "BMT",
     startCourse: "ابدأ الدورة", continueCourse: "متابعة", completed: "مكتمل", enrolled: "مسجل",
