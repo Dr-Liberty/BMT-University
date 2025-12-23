@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Clock, Users, Star, BookOpen, CheckCircle } from 'lucide-react';
 import { Link } from 'wouter';
-import { useTranslation } from 'react-i18next';
 import type { Course as APICourse } from '@shared/schema';
 
 export interface CourseDisplay {
