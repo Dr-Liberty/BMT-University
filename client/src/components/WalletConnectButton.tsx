@@ -383,10 +383,10 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
 
   if (isDemoMode && isAuthenticated) {
     return (
-      <div data-testid="wallet-connect-container" className="flex items-center gap-2">
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/20 border border-amber-500/50 rounded-lg">
-          <Play className="h-4 w-4 text-amber-500" />
-          <span className="text-sm font-medium text-amber-500">Demo Mode</span>
+      <div data-testid="wallet-connect-container" className="flex items-center gap-1">
+        <div className="flex items-center gap-1 px-2 py-1 bg-amber-500/20 border border-amber-500/50 rounded-md">
+          <Play className="h-3 w-3 text-amber-500" />
+          <span className="text-xs font-medium text-amber-500">Demo</span>
         </div>
         <Button
           variant="outline"
@@ -394,7 +394,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
           onClick={handleDemoDisconnect}
           data-testid="button-demo-disconnect"
         >
-          Exit Demo
+          Exit
         </Button>
       </div>
     );
@@ -500,41 +500,44 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
         <Button
           onClick={handleConnect}
           disabled={isPending}
+          size="sm"
           className="bg-bmt-orange text-background hover:bg-bmt-orange/90"
           data-testid="button-connect-wallet"
         >
-          <Wallet className="h-4 w-4 mr-2" />
-          {isPending ? 'Connecting...' : 'Connect Wallet'}
+          <Wallet className="h-4 w-4 mr-1" />
+          {isPending ? 'Connecting...' : 'Connect'}
         </Button>
       ) : isWrongNetwork ? (
         <Button
           variant="destructive"
+          size="sm"
           data-testid="button-wrong-network"
-          className="flex items-center gap-2"
+          className="flex items-center gap-1"
           onClick={handleSwitchNetwork}
           disabled={isSwitchingChain}
         >
           {isSwitchingChain ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
+            <RefreshCw className="h-3 w-3 animate-spin" />
           ) : (
-            <AlertCircle className="h-4 w-4" />
+            <AlertCircle className="h-3 w-3" />
           )}
-          {isSwitchingChain ? 'Switching...' : 'Switch to IGRA'}
+          {isSwitchingChain ? '...' : 'IGRA'}
         </Button>
       ) : (
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full" />
-            <span className="text-sm font-medium">{chain?.name || 'Kasplex L2'}</span>
+        <div className="flex items-center gap-1">
+          <div className="hidden sm:flex items-center gap-1 px-2 py-1 bg-primary/10 border border-primary/20 rounded-md text-xs">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+            <span className="font-medium">IGRA</span>
           </div>
           <Button
             onClick={handleDisconnect}
             variant="outline"
+            size="sm"
             data-testid="button-account"
-            className="flex items-center gap-2"
+            className="flex items-center gap-1"
           >
             {formatAddress(address || '')}
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-3 w-3" />
           </Button>
         </div>
       )}
@@ -542,13 +545,14 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       {!isAuthenticated && !isConnected && (
         <Button
           variant="outline"
+          size="sm"
           onClick={handleDemoConnect}
           disabled={isAuthenticating}
           data-testid="button-demo-connect"
-          className="flex items-center gap-2"
+          className="flex items-center gap-1"
         >
-          <Play className="h-4 w-4" />
-          {isAuthenticating ? 'Loading...' : 'Try Demo'}
+          <Play className="h-3 w-3" />
+          {isAuthenticating ? '...' : 'Demo'}
         </Button>
       )}
     </div>
