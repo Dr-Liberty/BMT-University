@@ -2,7 +2,9 @@ import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Shield, Menu } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import WalletConnectButton from './WalletConnectButton';
+import LanguageSwitcher from './LanguageSwitcher';
 import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 import { getAuthToken } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -14,18 +16,19 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 
-const navLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/courses', label: 'Courses' },
-  { href: '/about', label: 'About' },
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/analytics', label: 'Analytics' },
-];
-
 export default function Navbar() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t } = useTranslation();
   const authToken = getAuthToken();
+  
+  const navLinks = [
+    { href: '/', label: t('nav.home') },
+    { href: '/courses', label: t('nav.courses') },
+    { href: '/about', label: t('nav.about') },
+    { href: '/dashboard', label: t('nav.dashboard') },
+    { href: '/analytics', label: t('nav.analytics') },
+  ];
   
   const { data: currentUser } = useQuery<{ id: string; walletAddress: string; role: string }>({
     queryKey: ['/api/auth/me'],
@@ -78,6 +81,7 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <WalletConnectButton />
             
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
