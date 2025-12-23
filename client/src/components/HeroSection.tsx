@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BookOpen, Award, Coins, CheckCircle, ShieldAlert } from 'lucide-react';
@@ -22,6 +23,7 @@ function formatBmtAmount(amount: number): string {
 }
 
 export default function HeroSection() {
+  const { t } = useTranslation();
   const { data: stats, isLoading } = useQuery<StatsData>({
     queryKey: ['/api/stats'],
   });
@@ -40,16 +42,15 @@ export default function HeroSection() {
         </div>
 
         <h1 className="font-heading font-bold text-5xl md:text-7xl text-white mb-4 tracking-tight" data-testid="text-hero-title">
-          BMT <span className="text-kaspa-cyan">UNIVERSITY</span>
+          {t('hero.title')} <span className="text-kaspa-cyan">{t('hero.titleHighlight')}</span>
         </h1>
         
         <p className="text-xl md:text-2xl text-muted-foreground font-heading mb-8" data-testid="text-hero-subtitle">
-          Learn Kaspa. Earn. <span className="text-bmt-orange">Collect Tears.</span>
+          {t('hero.subtitle')} <span className="text-bmt-orange">{t('hero.subtitleHighlight')}</span>
         </p>
 
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
-          Master BlockDAG & crypto through detailed courses with interactive quizes. Join us in unlocking Kaspas Learn-to-Earn potential. 
-          Complete lessons, pass quizzes, and earn <span className="text-bmt-orange font-semibold">$BMT tokens</span> on the Kaspa network.
+          {t('hero.description')}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
@@ -60,7 +61,7 @@ export default function HeroSection() {
               data-testid="button-hero-explore"
             >
               <BookOpen className="w-5 h-5" />
-              Explore Courses
+              {t('hero.exploreCourses')}
             </Button>
           </Link>
           <Link href="/dashboard">
@@ -70,7 +71,7 @@ export default function HeroSection() {
               data-testid="button-hero-dashboard"
             >
               <Award className="w-5 h-5" />
-              Dashboard
+              {t('hero.dashboard')}
             </Button>
           </Link>
         </div>
@@ -78,7 +79,7 @@ export default function HeroSection() {
         <div className="flex items-center justify-center gap-2 mb-16 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-lg max-w-lg mx-auto" data-testid="notice-vpn-warning">
           <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
           <p className="text-sm text-amber-200">
-            <span className="font-semibold">Important:</span> Please disable your VPN before connecting your wallet. VPN usage may flag your account.
+            <span className="font-semibold">{t('hero.important')}</span> {t('hero.vpnWarning')}
           </p>
         </div>
 
@@ -92,7 +93,7 @@ export default function HeroSection() {
                 <span className="font-heading font-bold text-3xl text-white">{stats?.totalCourses ?? 0}</span>
               )}
             </div>
-            <span className="text-sm text-muted-foreground uppercase tracking-wide">Courses</span>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">{t('stats.courses')}</span>
           </div>
           
           <div className="text-center" data-testid="stat-hero-students">
@@ -104,7 +105,7 @@ export default function HeroSection() {
                 <span className="font-heading font-bold text-3xl text-white">{stats?.totalStudents?.toLocaleString() ?? 0}</span>
               )}
             </div>
-            <span className="text-sm text-muted-foreground uppercase tracking-wide">Students</span>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">{t('stats.students')}</span>
           </div>
           
           <div className="text-center" data-testid="stat-hero-courses-completed">
@@ -116,7 +117,7 @@ export default function HeroSection() {
                 <span className="font-heading font-bold text-3xl text-white">{stats?.coursesCompleted?.toLocaleString() ?? 0}</span>
               )}
             </div>
-            <span className="text-sm text-muted-foreground uppercase tracking-wide">Courses Completed</span>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">{t('stats.coursesCompleted')}</span>
           </div>
           
           <div className="text-center" data-testid="stat-hero-bmt-distributed">
@@ -128,7 +129,7 @@ export default function HeroSection() {
                 <span className="font-heading font-bold text-3xl text-white">{formatBmtAmount(stats?.totalBmtDistributed ?? 0)}</span>
               )}
             </div>
-            <span className="text-sm text-muted-foreground uppercase tracking-wide">$BMT Distributed</span>
+            <span className="text-sm text-muted-foreground uppercase tracking-wide">{t('stats.bmtDistributed')}</span>
           </div>
         </div>
       </div>

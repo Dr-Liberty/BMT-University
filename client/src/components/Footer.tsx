@@ -1,8 +1,10 @@
 import { Link } from 'wouter';
+import { useTranslation } from 'react-i18next';
 import bmtLogo from '@assets/photo_2025-12-03_15-48-49_1764823250369.jpg';
 import { SiX, SiTelegram, SiDiscord } from 'react-icons/si';
 
 export default function Footer() {
+  const { t } = useTranslation();
   return (
     <footer className="bg-card border-t border-border py-12 px-4 sm:px-6 mt-auto" data-testid="footer-main">
       <div className="max-w-7xl mx-auto">
@@ -23,8 +25,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-muted-foreground mb-4 max-w-sm">
-              The premier BlockDAG learning platform on Kaspa. Learn, earn $BMT tokens, 
-              and collect Bitcoin Maxi Tears.
+              {t('footer.description')}
             </p>
             <div className="flex items-center gap-4">
               <a 
@@ -49,28 +50,28 @@ export default function Footer() {
           </div>
 
           <div>
-            <h3 className="font-heading font-semibold text-white mb-4">Platform</h3>
+            <h3 className="font-heading font-semibold text-white mb-4">{t('footer.quickLinks')}</h3>
             <ul className="space-y-2">
               <li>
                 <Link href="/courses" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
-                  Courses
+                  {t('nav.courses')}
                 </Link>
               </li>
               <li>
                 <Link href="/dashboard" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
-                  Dashboard
+                  {t('nav.dashboard')}
                 </Link>
               </li>
               <li>
                 <Link href="/analytics" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
-                  Analytics
+                  {t('nav.analytics')}
                 </Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <h3 className="font-heading font-semibold text-white mb-4">Resources</h3>
+            <h3 className="font-heading font-semibold text-white mb-4">{t('footer.resources')}</h3>
             <ul className="space-y-2">
               <li>
                 <a href="https://kaspa.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-kaspa-cyan transition-colors">
@@ -102,7 +103,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <p>&copy; 2025 BMT University. All rights reserved.</p>
+          <p>&copy; 2025 BMT University. {t('footer.rights')}</p>
           <p>
             Powered by <span className="text-kaspa-cyan">Kaspa</span> & <span className="text-kaspa-green">Kasplex</span>
           </p>
