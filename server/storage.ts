@@ -63,6 +63,7 @@ export interface IStorage {
   // Module methods
   getModule(id: string): Promise<Module | undefined>;
   getModulesByCourse(courseId: string): Promise<Module[]>;
+  getAllModules(): Promise<Module[]>;
   createModule(module: InsertModule): Promise<Module>;
   updateModule(id: string, data: Partial<InsertModule>): Promise<Module | undefined>;
   deleteModule(id: string): Promise<boolean>;
@@ -70,6 +71,7 @@ export interface IStorage {
   
   getLesson(id: string): Promise<Lesson | undefined>;
   getLessonsByCourse(courseId: string): Promise<Lesson[]>;
+  getAllLessons(): Promise<Lesson[]>;
   getLessonsByModule(moduleId: string): Promise<Lesson[]>;
   createLesson(lesson: InsertLesson): Promise<Lesson>;
   updateLesson(id: string, data: Partial<InsertLesson>): Promise<Lesson | undefined>;
@@ -85,12 +87,14 @@ export interface IStorage {
   getQuiz(id: string): Promise<Quiz | undefined>;
   getQuizByCourse(courseId: string): Promise<Quiz | undefined>;
   getQuizzesByCourse(courseId: string): Promise<Quiz[]>;
+  getAllQuizzes(): Promise<Quiz[]>;
   getQuizzesByModule(moduleId: string): Promise<Quiz[]>;
   createQuiz(quiz: InsertQuiz): Promise<Quiz>;
   updateQuiz(id: string, data: Partial<InsertQuiz>): Promise<Quiz | undefined>;
   deleteQuiz(id: string): Promise<boolean>;
   
   getQuizQuestions(quizId: string): Promise<QuizQuestion[]>;
+  getAllQuizQuestions(): Promise<QuizQuestion[]>;
   createQuizQuestion(question: InsertQuizQuestion): Promise<QuizQuestion>;
   updateQuizQuestion(id: string, data: Partial<InsertQuizQuestion>): Promise<QuizQuestion | undefined>;
   deleteQuizQuestion(id: string): Promise<boolean>;
@@ -536,6 +540,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(modules.orderIndex));
   }
 
+  async getAllModules(): Promise<Module[]> {
+    return db.select().from(modules).orderBy(asc(modules.orderIndex));
+  }
+
   async createModule(module: InsertModule): Promise<Module> {
     const [newModule] = await db.insert(modules).values(module).returning();
     return newModule;
@@ -569,6 +577,10 @@ export class DatabaseStorage implements IStorage {
 
   async getLessonsByCourse(courseId: string): Promise<Lesson[]> {
     return db.select().from(lessons).where(eq(lessons.courseId, courseId)).orderBy(asc(lessons.orderIndex));
+  }
+
+  async getAllLessons(): Promise<Lesson[]> {
+    return db.select().from(lessons).orderBy(asc(lessons.orderIndex));
   }
 
   async getLessonsByModule(moduleId: string): Promise<Lesson[]> {
@@ -655,6 +667,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(quizzes.orderIndex));
   }
 
+  async getAllQuizzes(): Promise<Quiz[]> {
+    return db.select().from(quizzes).orderBy(asc(quizzes.orderIndex));
+  }
+
   async getQuizzesByModule(moduleId: string): Promise<Quiz[]> {
     return db.select().from(quizzes)
       .where(eq(quizzes.moduleId, moduleId))
@@ -679,6 +695,10 @@ export class DatabaseStorage implements IStorage {
 
   async getQuizQuestions(quizId: string): Promise<QuizQuestion[]> {
     return db.select().from(quizQuestions).where(eq(quizQuestions.quizId, quizId)).orderBy(asc(quizQuestions.orderIndex));
+  }
+
+  async getAllQuizQuestions(): Promise<QuizQuestion[]> {
+    return db.select().from(quizQuestions).orderBy(asc(quizQuestions.orderIndex));
   }
 
   async createQuizQuestion(question: InsertQuizQuestion): Promise<QuizQuestion> {

@@ -181,6 +181,82 @@ export async function registerRoutes(
   const assetsPath = path.join(process.cwd(), "attached_assets");
   app.use("/assets", express.static(assetsPath));
   
+  // ============ COURSE CONTENT EXPORT (Public) ============
+  app.get("/api/export/courses", async (req, res) => {
+    try {
+      const courses = await storage.getAllCourses();
+      const allModules = await storage.getAllModules();
+      const allLessons = await storage.getAllLessons();
+      const allQuizzes = await storage.getAllQuizzes();
+      const allQuestions = await storage.getAllQuizQuestions();
+      
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        platform: "BMT University",
+        totalCourses: courses.length,
+        courses: courses.map(course => ({
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          category: course.category,
+          difficulty: course.difficulty,
+          bmtReward: course.bmtReward,
+          isPublished: course.isPublished,
+          modules: allModules
+            .filter(m => m.courseId === course.id)
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .map(module => ({
+              id: module.id,
+              title: module.title,
+              description: module.description,
+              orderIndex: module.orderIndex,
+              lessons: allLessons
+                .filter(l => l.moduleId === module.id)
+                .sort((a, b) => a.orderIndex - b.orderIndex)
+                .map(l => ({
+                  id: l.id,
+                  title: l.title,
+                  content: l.content,
+                  videoUrl: l.videoUrl,
+                  duration: l.duration,
+                  orderIndex: l.orderIndex
+                }))
+            })),
+          unassignedLessons: allLessons
+            .filter(l => l.courseId === course.id && !l.moduleId)
+            .sort((a, b) => a.orderIndex - b.orderIndex),
+          quizzes: allQuizzes
+            .filter(q => q.courseId === course.id)
+            .map(quiz => ({
+              id: quiz.id,
+              title: quiz.title,
+              description: quiz.description,
+              passingScore: quiz.passingScore,
+              timeLimit: quiz.timeLimit,
+              isPublished: quiz.isPublished,
+              questions: allQuestions
+                .filter(q => q.quizId === quiz.id)
+                .sort((a, b) => a.orderIndex - b.orderIndex)
+                .map(q => ({
+                  question: q.question,
+                  questionType: q.questionType,
+                  options: q.options,
+                  correctAnswer: q.correctAnswer,
+                  points: q.points,
+                  explanation: q.explanation
+                }))
+            }))
+        }))
+      };
+      
+      res.setHeader('Content-Disposition', 'attachment; filename="bmt_courses_export.json"');
+      res.json(exportData);
+    } catch (error) {
+      console.error("Error exporting courses:", error);
+      res.status(500).json({ error: "Failed to export courses" });
+    }
+  });
+
   // ============ ABOUT PAGE ============
   app.get("/api/about", async (req, res) => {
     try {
