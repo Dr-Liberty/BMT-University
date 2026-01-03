@@ -3260,6 +3260,57 @@ export async function registerRoutes(
     }
   });
   
+  // ============ POST-PAYOUT SELL TRACKING ============
+  
+  // Generate comprehensive sell tracking report (calls Kasplex Explorer API)
+  app.get("/api/admin/security/sell-tracking-report", adminMiddleware, async (req: any, res) => {
+    try {
+      const { days } = req.query;
+      const daysBack = parseInt(days as string) || 7;
+      
+      const { generateTrackingReport } = await import('./postPayoutTracker');
+      
+      console.log(`[Admin] Generating sell tracking report for ${daysBack} days...`);
+      const report = await generateTrackingReport(daysBack);
+      
+      res.json(report);
+    } catch (error: any) {
+      console.error("Error generating sell tracking report:", error);
+      res.status(500).json({ error: "Failed to generate report", details: error.message });
+    }
+  });
+  
+  // Quick stats without full blockchain scan
+  app.get("/api/admin/security/sell-tracking-quick", adminMiddleware, async (req: any, res) => {
+    try {
+      const { days } = req.query;
+      const daysBack = parseInt(days as string) || 7;
+      
+      const { getQuickStats } = await import('./postPayoutTracker');
+      const stats = await getQuickStats(daysBack);
+      
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error getting quick stats:", error);
+      res.status(500).json({ error: "Failed to get quick stats", details: error.message });
+    }
+  });
+  
+  // Track specific wallet's post-payout activity
+  app.get("/api/admin/security/wallet-tracking/:walletAddress", adminMiddleware, async (req: any, res) => {
+    try {
+      const { walletAddress } = req.params;
+      
+      const { trackWalletPostPayout } = await import('./postPayoutTracker');
+      const result = await trackWalletPostPayout(walletAddress);
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error tracking wallet:", error);
+      res.status(500).json({ error: "Failed to track wallet", details: error.message });
+    }
+  });
+  
   // ============ IP REPUTATION ADMIN ENDPOINTS ============
   
   // Get IP reputation statistics
