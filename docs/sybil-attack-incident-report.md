@@ -116,7 +116,8 @@ banned_at TIMESTAMP
 ### Action Items
 
 - [ ] Implement minimum quiz duration (30s per question)
-- [ ] Add `is_banned` check to quiz submission and reward routes
+- [x] Add `is_banned` check to quiz submission and reward routes ✓ COMPLETED
+- [x] Add defense-in-depth ban check in storage.createReward() ✓ COMPLETED
 - [ ] Change IP rate limit to rolling 24-hour window
 - [ ] Randomize quiz answer order
 - [ ] Add IP blocklist with `185.191.204.203`
@@ -124,6 +125,16 @@ banned_at TIMESTAMP
 
 ---
 
+### Security Controls Implemented (Jan 3, 2026)
+
+1. **Quiz Submit Route** - Checks `isBanned` flag, returns 403 if banned
+2. **Reward Claim Route** - Checks `isBanned` flag, returns 403 if banned
+3. **Lesson Complete Route** - Checks `isBanned` flag, blocks auto-rewards
+4. **Referral Qualification** - Checks both referrer and referee for bans
+5. **Storage Layer (Defense-in-Depth)** - `createReward()` throws error if user is banned
+
+---
+
 *Report generated: January 3, 2026*
 *Incident classified: SYBIL-001*
-*Status: Mitigated, security improvements pending*
+*Status: Mitigated, core security controls implemented*

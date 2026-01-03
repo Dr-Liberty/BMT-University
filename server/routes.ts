@@ -970,6 +970,16 @@ export async function registerRoutes(
 
   app.post("/api/lessons/:id/complete", authMiddleware, async (req: any, res) => {
     try {
+      // ============ SECURITY: Check if user is banned ============
+      const currentUser = await storage.getUser(req.user.id);
+      if (currentUser?.isBanned) {
+        console.log(`[Security] BLOCKED lesson completion from banned user: ${req.user.walletAddress}, reason: ${currentUser.banReason}`);
+        return res.status(403).json({ 
+          error: "Your account has been suspended. If you believe this is an error, please contact support.",
+          banned: true
+        });
+      }
+      
       const progress = await storage.markLessonComplete(req.user.id, req.params.id);
       
       // Update enrollment progress
@@ -1396,6 +1406,16 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/submit", rateLimitMiddleware('quizSubmit'), authMiddleware, async (req: any, res) => {
     try {
+      // ============ SECURITY: Check if user is banned ============
+      const bannedUser = await storage.getUser(req.user.id);
+      if (bannedUser?.isBanned) {
+        console.log(`[Security] BLOCKED quiz submission from banned user: ${req.user.walletAddress}, reason: ${bannedUser.banReason}`);
+        return res.status(403).json({ 
+          error: "Your account has been suspended. If you believe this is an error, please contact support.",
+          banned: true
+        });
+      }
+      
       // ============ SECURITY: Per-user throttle (1 submission per 5 seconds) ============
       if (!(await checkUserThrottle(req.user.id, 'quiz_submit', 5000))) {
         return res.status(429).json({ 
@@ -1934,6 +1954,16 @@ export async function registerRoutes(
     const rewardId = req.params.rewardId;
     
     try {
+      // ============ SECURITY: Check if user is banned ============
+      const bannedUser = await storage.getUser(req.user.id);
+      if (bannedUser?.isBanned) {
+        console.log(`[Security] BLOCKED reward claim from banned user: ${req.user.walletAddress}, reason: ${bannedUser.banReason}`);
+        return res.status(403).json({ 
+          error: "Your account has been suspended. If you believe this is an error, please contact support.",
+          banned: true
+        });
+      }
+      
       // ============ SECURITY: Block demo wallets from claiming rewards ============
       if (req.user.walletAddress?.toLowerCase().startsWith('0xdead')) {
         return res.status(403).json({ 
@@ -3596,6 +3626,17 @@ export async function registerRoutes(
     
     if (!updatedReferral) {
       console.log(`[Referral] Failed to update referral ${referralId}`);
+      return;
+    }
+    
+    // ============ SECURITY: Check if referrer or referee is banned ============
+    const referrer = await storage.getUser(updatedReferral.referrerId);
+    const referee = await storage.getUser(updatedReferral.referredUserId);
+    
+    if (referrer?.isBanned || referee?.isBanned) {
+      console.log(`[Security] BLOCKED referral reward - banned user involved: referrer=${referrer?.isBanned ? 'BANNED' : 'ok'}, referee=${referee?.isBanned ? 'BANNED' : 'ok'}`);
+      // Mark referral as cancelled instead of rewarding
+      await storage.updateReferral(referralId, { status: 'cancelled' as any });
       return;
     }
     

@@ -819,6 +819,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReward(reward: InsertReward): Promise<Reward> {
+    // DEFENSE-IN-DEPTH: Prevent creating rewards for banned users
+    if (reward.userId) {
+      const [user] = await db.select().from(users).where(eq(users.id, reward.userId));
+      if (user?.isBanned) {
+        console.log(`[Security] BLOCKED reward creation for banned user: ${user.walletAddress}`);
+        throw new Error('Cannot create reward for banned user');
+      }
+    }
+    
     const [newReward] = await db.insert(rewards).values(reward).returning();
     return newReward;
   }
