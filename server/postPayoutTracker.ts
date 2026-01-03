@@ -3,12 +3,28 @@ import {
   payoutTransactions, 
   postPayoutTracking, 
   knownSinkAddresses,
-  users
+  users,
+  paymasterConfig
 } from "@shared/schema";
 import { eq, and, desc, gte, isNull } from "drizzle-orm";
-import { getOutboundTransfers, type TokenTransfer } from './kasplex';
+import { getOutboundTransfers, getERC20Balance, type TokenTransfer } from './kasplex';
 
-const BMT_TOKEN_ADDRESS = process.env.BMT_TOKEN_ADDRESS || '0x422a0b6b76B47eA56aB3D4f854ABB92d31783c91';
+async function getBmtTokenAddress(): Promise<string> {
+  const config = await db.select().from(paymasterConfig).limit(1);
+  if (config.length > 0 && config[0].tokenContractAddress) {
+    return config[0].tokenContractAddress;
+  }
+  return '0x35fBa50F52e2AA305438134c646957066608d976';
+}
+
+interface DestinationInfo {
+  address: string;
+  amount: number;
+  blockNumber: number;
+  currentBalance: number;
+  stillHolds: boolean;
+  txHash: string;
+}
 
 interface WalletTrackingResult {
   walletAddress: string;
@@ -19,7 +35,7 @@ interface WalletTrackingResult {
   firstRewardAt: Date | null;
   firstSellAt: Date | null;
   holdTimeHours: number | null;
-  destinations: { address: string; amount: number; blockNumber: number }[];
+  destinations: DestinationInfo[];
   isSeller: boolean;
   sellPercentage: number;
 }
@@ -45,8 +61,9 @@ async function getKnownSinkAddresses(): Promise<Set<string>> {
   return new Set(sinks.map(s => s.address.toLowerCase()));
 }
 
-export async function trackWalletPostPayout(walletAddress: string): Promise<WalletTrackingResult> {
+export async function trackWalletPostPayout(walletAddress: string, bmtTokenAddress?: string): Promise<WalletTrackingResult> {
   const normalizedAddress = walletAddress.toLowerCase();
+  const tokenAddress = bmtTokenAddress || await getBmtTokenAddress();
   
   const payouts = await db.select()
     .from(payoutTransactions)
@@ -59,11 +76,11 @@ export async function trackWalletPostPayout(walletAddress: string): Promise<Wall
   const totalBmtReceived = payouts.reduce((sum, p) => sum + (p.amount || 0), 0);
   const firstRewardAt = payouts.length > 0 ? payouts[0].processedAt : null;
   
-  const outboundTransfers = await getOutboundTransfers(walletAddress, BMT_TOKEN_ADDRESS);
+  const outboundTransfers = await getOutboundTransfers(walletAddress, tokenAddress);
   
   let totalBmtSent = 0;
   let firstSellBlockNumber = Infinity;
-  const destinations: { address: string; amount: number; blockNumber: number }[] = [];
+  const destinations: DestinationInfo[] = [];
   
   for (const tx of outboundTransfers) {
     const amount = parseInt(tx.amount) / 1e18;
@@ -73,10 +90,23 @@ export async function trackWalletPostPayout(walletAddress: string): Promise<Wall
       firstSellBlockNumber = tx.blockNumber;
     }
     
+    let currentBalance = 0;
+    try {
+      const balanceResult = await getERC20Balance(tokenAddress, tx.to);
+      if (balanceResult) {
+        currentBalance = parseFloat(balanceResult.formattedBalance.replace(/,/g, ''));
+      }
+    } catch (e) {
+      console.error(`Error getting balance for ${tx.to}:`, e);
+    }
+    
     destinations.push({
       address: tx.to,
       amount,
       blockNumber: tx.blockNumber,
+      currentBalance,
+      stillHolds: currentBalance >= amount * 0.5,
+      txHash: tx.txHash,
     });
   }
   
@@ -133,14 +163,16 @@ export async function generateTrackingReport(daysBack: number = 7): Promise<Trac
   }
   
   const uniqueWallets = Array.from(walletPayouts.keys());
+  const bmtTokenAddress = await getBmtTokenAddress();
   console.log(`[PostPayoutTracker] Tracking ${uniqueWallets.length} wallets via RPC eth_getLogs...`);
+  console.log(`[PostPayoutTracker] BMT Token Address: ${bmtTokenAddress}`);
   
   const trackingResults: WalletTrackingResult[] = [];
   let processedCount = 0;
   
   for (const wallet of uniqueWallets) {
     try {
-      const result = await trackWalletPostPayout(wallet);
+      const result = await trackWalletPostPayout(wallet, bmtTokenAddress);
       trackingResults.push(result);
       processedCount++;
       
