@@ -2039,8 +2039,8 @@ export async function registerRoutes(
     }
   });
 
-  // Daily payout limit per wallet (150,000 BMT)
-  const DAILY_PAYOUT_LIMIT_BMT = 150000;
+  // Daily payout limit per wallet (60,000 BMT)
+  const DAILY_PAYOUT_LIMIT_BMT = 60000;
   
   app.post("/api/rewards/:rewardId/claim", rateLimitMiddleware('rewardClaim'), authMiddleware, async (req: any, res) => {
     const rewardId = req.params.rewardId;
