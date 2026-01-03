@@ -115,26 +115,44 @@ banned_at TIMESTAMP
 
 ### Action Items
 
-- [ ] Implement minimum quiz duration (30s per question)
+- [x] Implement minimum quiz duration (10s per question) ✓ COMPLETED
 - [x] Add `is_banned` check to quiz submission and reward routes ✓ COMPLETED
 - [x] Add defense-in-depth ban check in storage.createReward() ✓ COMPLETED
 - [ ] Change IP rate limit to rolling 24-hour window
-- [ ] Randomize quiz answer order
-- [ ] Add IP blocklist with `185.191.204.203`
+- [x] Randomize quiz answer order ✓ COMPLETED (Fisher-Yates shuffle)
+- [x] Add IP blocklist with `185.191.204.203` ✓ COMPLETED
+- [x] IP blocklist check on quiz submission, lesson completion, and reward claim ✓ COMPLETED
 - [ ] Consider adding CAPTCHA for high-value rewards
 
 ---
 
 ### Security Controls Implemented (Jan 3, 2026)
 
+#### User Ban System
 1. **Quiz Submit Route** - Checks `isBanned` flag, returns 403 if banned
 2. **Reward Claim Route** - Checks `isBanned` flag, returns 403 if banned
 3. **Lesson Complete Route** - Checks `isBanned` flag, blocks auto-rewards
 4. **Referral Qualification** - Checks both referrer and referee for bans
 5. **Storage Layer (Defense-in-Depth)** - `createReward()` throws error if user is banned
 
+#### IP Blocklist System
+6. **IP Blocklist Table** - `ip_blocklist` table with support for permanent/temporary blocks
+7. **Quiz Submit Route** - Checks IP blocklist, returns 403 if blocked
+8. **Lesson Complete Route** - Checks IP blocklist, returns 403 if blocked  
+9. **Reward Claim Route** - Checks IP blocklist first, then IP reputation service
+
+#### Quiz Security
+10. **Minimum Quiz Duration** - Enforces 10 seconds per question server-side
+11. **Answer Randomization** - Fisher-Yates shuffle on question order and answer options
+12. **Client Timestamp Validation** - Rejects future timestamps (>60s clock drift)
+
+#### Schema Changes
+- `users.is_banned`, `users.ban_reason`, `users.banned_at` - User ban tracking
+- `ip_blocklist` table - IP-based blocking with expiration support
+- Attacker IP `185.191.204.203` added to blocklist
+
 ---
 
 *Report generated: January 3, 2026*
 *Incident classified: SYBIL-001*
-*Status: Mitigated, core security controls implemented*
+*Status: Mitigated, comprehensive security controls implemented*

@@ -980,6 +980,24 @@ export async function registerRoutes(
         });
       }
       
+      // ============ SECURITY: Check IP blocklist ============
+      const lessonClientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                       req.headers['x-real-ip'] || 
+                       req.connection?.remoteAddress || 
+                       req.ip || 
+                       'unknown';
+      if (lessonClientIp !== 'unknown') {
+        const ipBlockCheck = await storage.isIpBlocked(lessonClientIp);
+        if (ipBlockCheck.isBlocked) {
+          console.log(`[Security] BLOCKED lesson completion from blocked IP: ${lessonClientIp}, reason: ${ipBlockCheck.reason}`);
+          return res.status(403).json({ 
+            error: "This connection has been blocked due to previous violations. If you believe this is an error, please contact support.",
+            blocked: true,
+            reason: 'ip_blocked'
+          });
+        }
+      }
+      
       const progress = await storage.markLessonComplete(req.user.id, req.params.id);
       
       // Update enrollment progress
@@ -1067,6 +1085,16 @@ export async function registerRoutes(
   });
 
   // ============ QUIZZES ============
+  // Helper function to shuffle array (Fisher-Yates algorithm) - for answer randomization
+  function shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
   app.get("/api/courses/:courseId/quiz", async (req, res) => {
     try {
       const quiz = await storage.getQuizByCourse(req.params.courseId);
@@ -1075,18 +1103,22 @@ export async function registerRoutes(
       }
       const questions = await storage.getQuizQuestions(quiz.id);
       
-      // Remove correct answers for students (they should be hidden)
-      const safeQuestions = questions.map(q => ({
-        ...q,
-        options: q.options.map((o, idx) => {
+      // Remove correct answers and RANDOMIZE option order for students
+      const safeQuestions = questions.map(q => {
+        const formattedOptions = q.options.map((o, idx) => {
           if (typeof o === 'string') {
             return { id: String(idx), text: o };
           }
           return { id: o.id || String(idx), text: o.text || '' };
-        }),
-      }));
+        });
+        
+        return {
+          ...q,
+          options: shuffleArray(formattedOptions), // Randomize answer order
+        };
+      });
       
-      res.json({ ...quiz, questions: safeQuestions });
+      res.json({ ...quiz, questions: shuffleArray(safeQuestions) }); // Also shuffle question order
     } catch (error) {
       console.error("Error fetching quiz:", error);
       res.status(500).json({ error: "Failed to fetch quiz" });
@@ -1137,17 +1169,22 @@ export async function registerRoutes(
       }
       const questions = await storage.getQuizQuestions(quiz.id);
       
-      const safeQuestions = questions.map(q => ({
-        ...q,
-        options: q.options.map((o, idx) => {
+      // Remove correct answers and RANDOMIZE option order for students
+      const safeQuestions = questions.map(q => {
+        const formattedOptions = q.options.map((o, idx) => {
           if (typeof o === 'string') {
             return { id: String(idx), text: o };
           }
           return { id: o.id || String(idx), text: o.text || '' };
-        }),
-      }));
+        });
+        
+        return {
+          ...q,
+          options: shuffleArray(formattedOptions), // Randomize answer order
+        };
+      });
       
-      res.json({ ...quiz, questions: safeQuestions });
+      res.json({ ...quiz, questions: shuffleArray(safeQuestions) }); // Also shuffle question order
     } catch (error) {
       console.error("Error fetching quiz:", error);
       res.status(500).json({ error: "Failed to fetch quiz" });
@@ -1322,6 +1359,7 @@ export async function registerRoutes(
   // ============ QUIZ ATTEMPTS ============
   const submitQuizSchema = z.object({
     answers: z.record(z.string(), z.string()),
+    startedAt: z.number().optional(), // Timestamp when quiz was started (for duration validation)
     fingerprint: z.object({
       hash: z.string(),
       screenResolution: z.string().optional(),
@@ -1330,6 +1368,9 @@ export async function registerRoutes(
       platform: z.string().optional(),
     }).optional(),
   });
+  
+  // Minimum seconds per question to prevent bot submissions
+  const MIN_SECONDS_PER_QUESTION = 10; // 10 seconds per question minimum
 
   // Helper function to get client IP
   function getClientIp(req: any): string {
@@ -1416,6 +1457,24 @@ export async function registerRoutes(
         });
       }
       
+      // ============ SECURITY: Check IP blocklist ============
+      const quizClientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                       req.headers['x-real-ip'] || 
+                       req.connection?.remoteAddress || 
+                       req.ip || 
+                       'unknown';
+      if (quizClientIp !== 'unknown') {
+        const ipBlockCheck = await storage.isIpBlocked(quizClientIp);
+        if (ipBlockCheck.isBlocked) {
+          console.log(`[Security] BLOCKED quiz submission from blocked IP: ${quizClientIp}, reason: ${ipBlockCheck.reason}`);
+          return res.status(403).json({ 
+            error: "This connection has been blocked due to previous violations. If you believe this is an error, please contact support.",
+            blocked: true,
+            reason: 'ip_blocked'
+          });
+        }
+      }
+      
       // ============ SECURITY: Per-user throttle (1 submission per 5 seconds) ============
       if (!(await checkUserThrottle(req.user.id, 'quiz_submit', 5000))) {
         return res.status(429).json({ 
@@ -1478,6 +1537,39 @@ export async function registerRoutes(
       const result = submitQuizSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ error: fromError(result.error).message });
+      }
+
+      // ============ SECURITY: Minimum quiz duration enforcement ============
+      // Get question count for this quiz
+      const quizQuestions = await storage.getQuizQuestions(quiz.id);
+      const questionCount = quizQuestions.length;
+      const minDurationMs = questionCount * MIN_SECONDS_PER_QUESTION * 1000;
+      
+      // Validate quiz was started and took minimum time (skip for demo wallets)
+      if (!isDemoWallet && result.data.startedAt) {
+        const elapsedMs = Date.now() - result.data.startedAt;
+        
+        // Reject submissions that are impossibly fast
+        if (elapsedMs < minDurationMs) {
+          const minSeconds = Math.ceil(minDurationMs / 1000);
+          const elapsedSeconds = Math.round(elapsedMs / 1000);
+          console.log(`[Security] BLOCKED speed submission: user=${req.user.id}, quiz=${quiz.id}, elapsed=${elapsedSeconds}s, min=${minSeconds}s`);
+          return res.status(400).json({ 
+            error: `Quiz submitted too quickly. Please take at least ${MIN_SECONDS_PER_QUESTION} seconds per question to read carefully.`,
+            minDuration: minSeconds,
+            elapsed: elapsedSeconds,
+            tooFast: true
+          });
+        }
+        
+        // Reject future timestamps (clock manipulation attempt)
+        if (result.data.startedAt > Date.now() + 60000) { // Allow 1 minute clock drift
+          console.log(`[Security] BLOCKED future timestamp: user=${req.user.id}, startedAt=${result.data.startedAt}, now=${Date.now()}`);
+          return res.status(400).json({ 
+            error: "Invalid quiz start time. Please refresh and try again.",
+            invalidTimestamp: true
+          });
+        }
       }
 
       // ============ ANTI-ABUSE CHECK 2: Device/IP fingerprinting ============
@@ -1991,6 +2083,17 @@ export async function registerRoutes(
                        'unknown';
       
       if (clientIp !== 'unknown') {
+        // Check our custom IP blocklist first (known bad actors)
+        const ipBlockCheck = await storage.isIpBlocked(clientIp);
+        if (ipBlockCheck.isBlocked) {
+          console.log(`[Security] BLOCKED claim from blocked IP: ${clientIp}, reason: ${ipBlockCheck.reason}`);
+          return res.status(403).json({ 
+            error: "This connection has been blocked due to previous violations. If you believe this is an error, please contact support.",
+            blocked: true,
+            reason: 'ip_blocked'
+          });
+        }
+        
         const { checkIpReputation } = await import('./security');
         const ipResult = await checkIpReputation(clientIp);
         

@@ -18,7 +18,7 @@ import {
   type ReferralSettings, type UpdateReferralSettings,
   type ReferralCode, type InsertReferralCode,
   type Referral, type InsertReferral,
-  type WalletBlacklist, type KnownSinkAddress,
+  type WalletBlacklist, type KnownSinkAddress, type IpBlocklist,
   users, courses, courseRatings, modules, lessons, lessonProgress,
   quizzes, quizQuestions, 
   enrollments, quizAttempts, certificates, rewards,
@@ -26,7 +26,7 @@ import {
   paymasterConfig, payoutTransactions,
   deviceFingerprints, suspiciousActivity,
   referralSettings, referralCodes, referrals,
-  walletBlacklist, knownSinkAddresses,
+  walletBlacklist, knownSinkAddresses, ipBlocklist,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, asc, gt, isNull, or } from "drizzle-orm";
@@ -204,6 +204,11 @@ export interface IStorage {
   isWalletBlacklisted(walletAddress: string): Promise<{ isBlacklisted: boolean; reason?: string; severity?: string }>;
   addToBlacklist(data: { walletAddress: string; reason: string; description?: string; severity?: string; linkedWallets?: string[]; totalDrained?: number; evidenceTxHashes?: string[]; flaggedBy?: string }): Promise<void>;
   removeFromBlacklist(walletAddress: string): Promise<boolean>;
+  
+  // IP blocklist methods (Anti-Sybil)
+  isIpBlocked(ipAddress: string): Promise<{ isBlocked: boolean; reason?: string; severity?: string }>;
+  addIpToBlocklist(data: { ipAddress: string; reason: string; description?: string; severity?: string; linkedWallets?: string[]; flaggedBy?: string; expiresAt?: Date }): Promise<void>;
+  removeIpFromBlocklist(ipAddress: string): Promise<boolean>;
   
   // Known sink address methods
   isKnownSinkAddress(address: string): Promise<{ isSink: boolean; label?: string; addressType?: string }>;
@@ -1379,6 +1384,73 @@ export class DatabaseStorage implements IStorage {
     const result = await db.update(walletBlacklist)
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(walletBlacklist.walletAddress, normalizedAddress));
+    return true;
+  }
+  
+  // ============ IP BLOCKLIST METHODS ============
+  
+  async isIpBlocked(ipAddress: string): Promise<{ isBlocked: boolean; reason?: string; severity?: string }> {
+    const [entry] = await db.select()
+      .from(ipBlocklist)
+      .where(and(
+        eq(ipBlocklist.ipAddress, ipAddress),
+        eq(ipBlocklist.isActive, true)
+      ))
+      .limit(1);
+    
+    if (entry) {
+      // Check if block has expired
+      if (entry.expiresAt && new Date() > entry.expiresAt) {
+        return { isBlocked: false };
+      }
+      return {
+        isBlocked: true,
+        reason: entry.reason,
+        severity: entry.severity,
+      };
+    }
+    return { isBlocked: false };
+  }
+  
+  async addIpToBlocklist(data: {
+    ipAddress: string;
+    reason: string;
+    description?: string;
+    severity?: string;
+    linkedWallets?: string[];
+    flaggedBy?: string;
+    expiresAt?: Date;
+  }): Promise<void> {
+    await db.insert(ipBlocklist)
+      .values({
+        ipAddress: data.ipAddress,
+        reason: data.reason,
+        description: data.description,
+        severity: data.severity || 'blocked',
+        linkedWallets: data.linkedWallets || [],
+        flaggedBy: data.flaggedBy || 'system',
+        expiresAt: data.expiresAt,
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: ipBlocklist.ipAddress,
+        set: {
+          reason: data.reason,
+          description: data.description,
+          severity: data.severity || 'blocked',
+          linkedWallets: data.linkedWallets || [],
+          flaggedBy: data.flaggedBy || 'system',
+          expiresAt: data.expiresAt,
+          isActive: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+  
+  async removeIpFromBlocklist(ipAddress: string): Promise<boolean> {
+    await db.update(ipBlocklist)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(ipBlocklist.ipAddress, ipAddress));
     return true;
   }
   

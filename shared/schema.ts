@@ -635,6 +635,30 @@ export const insertWalletBlacklistSchema = createInsertSchema(walletBlacklist).o
 export type InsertWalletBlacklist = z.infer<typeof insertWalletBlacklistSchema>;
 export type WalletBlacklist = typeof walletBlacklist.$inferSelect;
 
+// ============ IP BLOCKLIST (Anti-Sybil) ============
+export const ipBlocklist = pgTable("ip_blocklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ipAddress: varchar("ip_address", { length: 45 }).notNull().unique(), // IPv6 can be up to 45 chars
+  reason: varchar("reason", { length: 100 }).notNull(), // 'sybil_attack', 'multi_wallet_farming', 'vpn_abuse', 'bot_activity'
+  description: text("description"),
+  severity: varchar("severity", { length: 20 }).notNull().default('blocked'), // 'blocked', 'flagged', 'review'
+  linkedWallets: jsonb("linked_wallets").$type<string[]>().default([]), // Wallets associated with this IP
+  flaggedBy: varchar("flagged_by", { length: 50 }).default('system'), // 'system', 'admin', 'automated'
+  isActive: boolean("is_active").notNull().default(true),
+  expiresAt: timestamp("expires_at"), // Optional expiration for temporary blocks
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertIpBlocklistSchema = createInsertSchema(ipBlocklist).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertIpBlocklist = z.infer<typeof insertIpBlocklistSchema>;
+export type IpBlocklist = typeof ipBlocklist.$inferSelect;
+
 // ============ POST-PAYOUT TRACKING ============
 // Track where rewards go after being paid out
 export const postPayoutTracking = pgTable("post_payout_tracking", {
