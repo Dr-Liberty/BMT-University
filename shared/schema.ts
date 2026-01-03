@@ -10,6 +10,9 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   role: varchar("role", { length: 20 }).notNull().default('student'),
   avatarUrl: text("avatar_url"),
+  isBanned: boolean("is_banned").notNull().default(false),
+  banReason: text("ban_reason"),
+  bannedAt: timestamp("banned_at"),
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
 });
