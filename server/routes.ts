@@ -453,19 +453,33 @@ export async function registerRoutes(
         // Add current wallet to check
         uniqueWallets.add(walletAddress.toLowerCase());
         
-        // If this is the 2nd wallet from this device, show warning
-        if (uniqueWallets.size === 2) {
-          farmingWarning = {
-            type: 'farming_warning',
-            message: 'Warning: Multiple wallets detected from this device. Using multiple wallets to farm rewards is against our terms of service and may result in a permanent ban. If you believe this is an error, please contact support.',
-          };
-        } else if (uniqueWallets.size > 2) {
-          // 3+ wallets - this account is already flagged/blocked
+        // STRICT: Only 1 wallet per device allowed
+        // 2+ wallets = blocked
+        if (uniqueWallets.size >= 2) {
           farmingWarning = {
             type: 'farming_blocked',
-            message: 'Your device has been flagged for using multiple wallets. Rewards are blocked. Contact support if you believe this is an error.',
+            message: 'BLOCKED: Only one wallet per device is allowed to receive rewards. This device has been used with multiple wallets. Your rewards are blocked. Contact support if you believe this is an error.',
           };
         }
+      }
+      
+      // Also check IP address
+      const rawIpForCheck = getClientIp(req);
+      const clientIpForCheck = normalizeIp(rawIpForCheck);
+      const ipFingerprints = await storage.getDeviceFingerprintsByIp(clientIpForCheck);
+      const uniqueWalletsFromIp = new Set(
+        ipFingerprints
+          .filter(f => !f.walletAddress?.toLowerCase().startsWith('0xdead'))
+          .map(f => f.walletAddress.toLowerCase())
+      );
+      uniqueWalletsFromIp.add(walletAddress.toLowerCase());
+      
+      // STRICT: Only 1 wallet per IP allowed
+      if (uniqueWalletsFromIp.size >= 2 && !farmingWarning) {
+        farmingWarning = {
+          type: 'farming_blocked',
+          message: 'BLOCKED: Only one wallet per IP address is allowed to receive rewards. This IP has been used with multiple wallets. Your rewards are blocked. Contact support if you believe this is an error.',
+        };
       }
       
       // Create session with shorter expiry for security
@@ -1614,17 +1628,16 @@ export async function registerRoutes(
         );
         if (uniqueWallets.size > 1) {
           suspiciousFlags.push(`fingerprint_multiple_wallets:${uniqueWallets.size}`);
-          // Severity thresholds for fingerprint sharing:
-          // 2 wallets = medium (warning only, don't block rewards)
-          // 3+ wallets = high (block rewards, likely farming)
-          const fpSeverity = uniqueWallets.size >= 3 ? 'high' : 'medium';
+          // STRICT: Only ONE wallet per device fingerprint can receive rewards
+          // 2+ wallets = HIGH severity, block all rewards
+          const fpSeverity = 'high';
           await storage.logSuspiciousActivity({
             userId: req.user.id,
             walletAddress: req.user.walletAddress,
             fingerprintHash,
             ipAddress: clientIp,
             activityType: 'multiple_wallets_same_device',
-            description: `Same device fingerprint used by ${uniqueWallets.size} different wallets`,
+            description: `BLOCKED: Same device fingerprint used by ${uniqueWallets.size} different wallets. Only 1 wallet per device allowed.`,
             severity: fpSeverity,
             courseId: course.id,
             metadata: { wallets: Array.from(uniqueWallets) },
@@ -1638,20 +1651,19 @@ export async function registerRoutes(
             .filter(f => !f.walletAddress?.toLowerCase().startsWith('0xdead'))
             .map(f => f.walletAddress)
         );
-        if (uniqueWalletsFromIp.size > 2) {
+        if (uniqueWalletsFromIp.size > 1) {
           suspiciousFlags.push(`ip_multiple_wallets:${uniqueWalletsFromIp.size}`);
-          // NOTE: Shared IPs are common (schools, offices, ISPs with CGNAT, VPNs)
-          // Only flag as HIGH severity at 10+ wallets to avoid false positives
-          // 3-9 wallets = low (monitoring only)
-          // 10+ wallets = high (block rewards, likely coordinated farming)
-          const ipSeverity = uniqueWalletsFromIp.size >= 10 ? 'high' : 'low';
+          // STRICT: Only ONE wallet per IP address can receive rewards
+          // 2+ wallets = HIGH severity, block all rewards
+          // Note: This may affect legitimate users on shared networks, but prevents farming
+          const ipSeverity = 'high';
           await storage.logSuspiciousActivity({
             userId: req.user.id,
             walletAddress: req.user.walletAddress,
             fingerprintHash,
             ipAddress: clientIp,
             activityType: 'multiple_wallets_same_ip',
-            description: `Same IP address used by ${uniqueWalletsFromIp.size} different wallets`,
+            description: `BLOCKED: Same IP address used by ${uniqueWalletsFromIp.size} different wallets. Only 1 wallet per IP allowed.`,
             severity: ipSeverity,
             courseId: course.id,
             metadata: { wallets: Array.from(uniqueWalletsFromIp) },
