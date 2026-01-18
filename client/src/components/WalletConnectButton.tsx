@@ -435,7 +435,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       } else if (errorStr.includes('No provider')) {
         errorMessage = 'No wallet provider found. Please make sure MetaMask or another wallet is installed and unlocked.';
       } else if (errorStr.includes('Chain') || errorStr.includes('chain')) {
-        errorMessage = 'Network issue. Try adding the IGRA Testnet network to your wallet manually.';
+        errorMessage = 'Network issue. Try adding the Kasplex zkEVM network to your wallet manually.';
       }
       
       toast({
@@ -462,7 +462,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       console.log('[Wallet] Network switch successful');
       toast({
         title: 'Network Switched',
-        description: 'Successfully connected to IGRA Testnet (Kasplex L2)',
+        description: 'Successfully connected to Kasplex zkEVM',
       });
     } catch (error) {
       console.error('[Wallet] Network switch failed:', error);
@@ -472,7 +472,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       if (errorStr.includes('chain has not been added') || errorStr.includes('Unrecognized chain')) {
         toast({
           title: 'Network Not Found',
-          description: 'Please add IGRA Testnet manually: RPC https://rpc.kasplex.org, Chain ID 202555',
+          description: 'Please add Kasplex zkEVM manually: RPC https://evmrpc.kasplex.org, Chain ID 202555',
           variant: 'destructive',
           duration: 15000,
         });
@@ -485,7 +485,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
       } else {
         toast({
           title: 'Network Switch Failed',
-          description: 'Could not switch to IGRA Testnet. Please add it manually to your wallet.',
+          description: 'Could not switch to Kasplex zkEVM. Please add it manually to your wallet.',
           variant: 'destructive',
         });
       }
@@ -519,7 +519,7 @@ export default function WalletConnectButton({ onConnect, onDisconnect }: WalletC
           ) : (
             <AlertCircle className="h-4 w-4" />
           )}
-          {isSwitchingChain ? 'Switching...' : 'Switch to IGRA'}
+          {isSwitchingChain ? 'Switching...' : 'Switch to Kasplex'}
         </Button>
       ) : (
         <div className="flex items-center gap-2">

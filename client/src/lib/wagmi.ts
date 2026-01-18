@@ -4,7 +4,7 @@ import { defineChain } from 'viem';
 
 export const kasplexL2 = defineChain({
   id: 202555,
-  name: 'Kasplex L2',
+  name: 'Kasplex zkEVM',
   nativeCurrency: {
     decimals: 18,
     name: 'Kaspa',
@@ -12,7 +12,7 @@ export const kasplexL2 = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://rpc.kasplex.org'],
+      http: ['https://evmrpc.kasplex.org'],
     },
   },
   blockExplorers: {
@@ -30,6 +30,6 @@ export const config = createConfig({
     }),
   ],
   transports: {
-    [kasplexL2.id]: http('https://rpc.kasplex.org'),
+    [kasplexL2.id]: http('https://evmrpc.kasplex.org'),
   },
 });
