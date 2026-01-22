@@ -4,8 +4,8 @@ import express from "express";
 import path from "path";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
-import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses, ipReputationCache } from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
+import { updateAboutPageSchema, insertCourseSchema, insertModuleSchema, insertLessonSchema, insertQuizSchema, insertQuizQuestionSchema, insertEnrollmentSchema, insertPaymasterConfigSchema, updatePaymasterConfigSchema, walletClusters, walletBlacklist, courseCompletionVelocity, postPayoutTracking, knownSinkAddresses, ipReputationCache, deviceFingerprints } from "@shared/schema";
 import { fromError } from "zod-validation-error";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
@@ -2181,6 +2181,34 @@ export async function registerRoutes(
       // Allow retry for pending, processing, or failed rewards
       if (reward.status === 'confirmed') {
         return res.status(400).json({ error: "Reward already claimed" });
+      }
+      
+      // ============ SECURITY: Pre-payout comprehensive check (anti-farming) ============
+      // Checks timezone patterns, parallel farming, and other sybil indicators
+      const { prePayoutSecurityCheck } = await import('./security');
+      
+      // Get user's timezone from their fingerprint
+      const userFingerprints = await db.select()
+        .from(deviceFingerprints)
+        .where(eq(sql`LOWER(${deviceFingerprints.walletAddress})`, req.user.walletAddress.toLowerCase()))
+        .orderBy(desc(deviceFingerprints.createdAt))
+        .limit(1);
+      
+      const userTimezone = userFingerprints[0]?.timezone || undefined;
+      
+      const prePayoutCheck = await prePayoutSecurityCheck(
+        req.user.walletAddress,
+        reward.courseId || '',
+        req.user.id,
+        userTimezone
+      );
+      
+      if (!prePayoutCheck.allowed) {
+        console.log(`[Security] Pre-payout check FAILED for ${req.user.walletAddress}: ${prePayoutCheck.reason}`);
+        return res.status(403).json({ 
+          error: prePayoutCheck.reason || "Payout blocked due to suspicious activity pattern",
+          blocked: true
+        });
       }
       
       // ============ SECURITY: Atomic daily payout limit check and reservation ============

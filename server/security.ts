@@ -38,14 +38,16 @@ function safeErrorLog(prefix: string, error: any): void {
 // - Post-payout dumping to sink addresses
 // - Wallet clustering with known bad actors
 
-// Security thresholds
+// Security thresholds - STRICT after Jan 2026 farming attack
 const SECURITY_THRESHOLDS = {
-  MAX_WALLETS_PER_IP_24H: 3,
-  MAX_WALLETS_PER_FINGERPRINT_24H: 2,
-  MIN_COURSE_COMPLETION_SECONDS: 60, // Minimum 1 minute per lesson
-  MIN_LESSON_TIME_SECONDS: 5, // Minimum 5 seconds per lesson
-  CLUSTER_AUTO_BLOCK_THRESHOLD: 5, // Auto-block clusters with 5+ wallets
-  CLUSTER_HIGH_RISK_THRESHOLD: 3, // Flag as high risk at 3+ wallets
+  MAX_WALLETS_PER_IP_24H: 1,           // STRICT: Only 1 wallet per IP (was 3)
+  MAX_WALLETS_PER_FINGERPRINT_24H: 1,   // STRICT: Only 1 wallet per fingerprint (was 2)
+  MIN_COURSE_COMPLETION_SECONDS: 120,   // Minimum 2 minutes per course (was 60)
+  MIN_LESSON_TIME_SECONDS: 10,          // Minimum 10 seconds per lesson (was 5)
+  CLUSTER_AUTO_BLOCK_THRESHOLD: 3,      // Auto-block clusters with 3+ wallets (was 5)
+  CLUSTER_HIGH_RISK_THRESHOLD: 2,       // Flag as high risk at 2+ wallets (was 3)
+  MAX_COMPLETIONS_PER_TIMEZONE_HOUR: 10, // Max completions from same timezone in 1 hour
+  PARALLEL_COMPLETION_WINDOW_SECONDS: 60, // Detect parallel farming within 60 seconds
 };
 
 // ============ 1. WALLET CREATION VELOCITY CHECK ============
@@ -199,6 +201,167 @@ export async function recordCourseCompletion(
     isSuspicious,
     suspiciousReason,
   }).onConflictDoNothing();
+}
+
+// ============ 2b. TIMEZONE PATTERN DETECTION (Anti-VPN Farming) ============
+// Detects coordinated farming attacks using rotating VPNs but same timezone
+export async function checkTimezoneAnomalies(
+  walletAddress: string,
+  timezone: string
+): Promise<{ blocked: boolean; reason?: string }> {
+  if (!timezone) {
+    return { blocked: false };
+  }
+  
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  // Count recent completions from this timezone
+  const result = await db.execute(sql`
+    SELECT COUNT(DISTINCT pt.recipient_address) as wallet_count,
+           COUNT(*) as payout_count
+    FROM payout_transactions pt
+    JOIN device_fingerprints df ON LOWER(pt.recipient_address) = LOWER(df.wallet_address)
+    WHERE df.timezone = ${timezone}
+      AND pt.created_at > ${oneHourAgo}
+      AND pt.status = 'completed'
+  `);
+  
+  const row = result.rows?.[0] as any;
+  const walletCount = parseInt(row?.wallet_count || '0');
+  const payoutCount = parseInt(row?.payout_count || '0');
+  
+  // Block if too many different wallets from same timezone in short period
+  if (walletCount >= SECURITY_THRESHOLDS.MAX_COMPLETIONS_PER_TIMEZONE_HOUR) {
+    console.log(`[Security] BLOCKED: Timezone anomaly detected - ${walletCount} wallets from ${timezone} in last hour`);
+    return {
+      blocked: true,
+      reason: `Suspicious activity pattern: ${walletCount} different wallets completing courses from timezone ${timezone} in the last hour`
+    };
+  }
+  
+  return { blocked: false };
+}
+
+// ============ 2c. PARALLEL FARMING DETECTION ============
+// Detects when multiple wallets complete the same course within seconds of each other
+export async function checkParallelFarming(
+  walletAddress: string,
+  courseId: string
+): Promise<{ blocked: boolean; reason?: string; linkedWallets?: string[] }> {
+  const windowSeconds = SECURITY_THRESHOLDS.PARALLEL_COMPLETION_WINDOW_SECONDS;
+  const windowStart = new Date(Date.now() - windowSeconds * 1000);
+  
+  // Find other wallets that completed the same course very recently
+  const parallelCompletions = await db.execute(sql`
+    SELECT DISTINCT pt.recipient_address
+    FROM payout_transactions pt
+    JOIN rewards r ON pt.reward_id = r.id
+    WHERE r.course_id = ${courseId}
+      AND pt.created_at > ${windowStart}
+      AND LOWER(pt.recipient_address) != LOWER(${walletAddress})
+      AND pt.status = 'completed'
+  `);
+  
+  if (parallelCompletions.rows && parallelCompletions.rows.length > 0) {
+    const linkedWallets = parallelCompletions.rows.map((r: any) => r.recipient_address);
+    console.log(`[Security] PARALLEL FARMING detected: ${walletAddress} completed ${courseId} within ${windowSeconds}s of ${linkedWallets.join(', ')}`);
+    
+    // If 2+ wallets completed the same course at the same time, it's likely farming
+    if (linkedWallets.length >= 1) {
+      return {
+        blocked: true,
+        reason: `Parallel farming detected: Multiple wallets completing same course within ${windowSeconds} seconds`,
+        linkedWallets
+      };
+    }
+  }
+  
+  return { blocked: false };
+}
+
+// ============ 2d. PRE-PAYOUT SECURITY CHECK ============
+// Comprehensive check before approving any payout
+export async function prePayoutSecurityCheck(
+  walletAddress: string,
+  courseId: string,
+  userId: string,
+  timezone?: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  const normalizedWallet = walletAddress.toLowerCase();
+  
+  // 1. Check if wallet is blacklisted
+  const [blacklisted] = await db.select()
+    .from(walletBlacklist)
+    .where(and(
+      eq(sql`LOWER(${walletBlacklist.walletAddress})`, normalizedWallet),
+      eq(walletBlacklist.isActive, true)
+    ))
+    .limit(1);
+  
+  if (blacklisted) {
+    console.log(`[Security] BLOCKED: Wallet ${walletAddress} is blacklisted - ${blacklisted.reason}`);
+    return { allowed: false, reason: 'Wallet is blocked due to suspicious activity' };
+  }
+  
+  // 2. Check if user is banned
+  const [user] = await db.select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  
+  if (user?.isBanned) {
+    console.log(`[Security] BLOCKED: User ${userId} is banned - ${user.banReason}`);
+    return { allowed: false, reason: 'Account is suspended' };
+  }
+  
+  // 3. Check timezone anomalies (anti-VPN farming)
+  if (timezone) {
+    const tzCheck = await checkTimezoneAnomalies(normalizedWallet, timezone);
+    if (tzCheck.blocked) {
+      return { allowed: false, reason: tzCheck.reason };
+    }
+  }
+  
+  // 4. Check parallel farming
+  const parallelCheck = await checkParallelFarming(normalizedWallet, courseId);
+  if (parallelCheck.blocked) {
+    // Auto-blacklist the wallet and linked wallets
+    await autoBlacklistWallet(normalizedWallet, 'Parallel farming detected', parallelCheck.linkedWallets || []);
+    return { allowed: false, reason: parallelCheck.reason };
+  }
+  
+  return { allowed: true };
+}
+
+// Auto-blacklist a wallet and optionally link related wallets
+async function autoBlacklistWallet(
+  walletAddress: string,
+  reason: string,
+  linkedWallets: string[] = []
+): Promise<void> {
+  const allWallets = [walletAddress.toLowerCase(), ...linkedWallets.map(w => w.toLowerCase())];
+  
+  for (const wallet of allWallets) {
+    await db.insert(walletBlacklist).values({
+      id: crypto.randomUUID(),
+      walletAddress: wallet,
+      reason: 'Auto-blocked: ' + reason,
+      description: `Linked wallets: ${allWallets.join(', ')}`,
+      severity: 'high',
+      flaggedBy: 'system_autoblock',
+      isActive: true,
+      linkedWallets: allWallets,
+    }).onConflictDoUpdate({
+      target: walletBlacklist.walletAddress,
+      set: {
+        isActive: true,
+        reason: 'Auto-blocked: ' + reason,
+        updatedAt: new Date(),
+      }
+    });
+  }
+  
+  console.log(`[Security] Auto-blacklisted ${allWallets.length} wallets: ${allWallets.join(', ')}`);
 }
 
 // ============ 3. CLUSTER DETECTION ============
