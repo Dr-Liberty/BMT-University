@@ -885,6 +885,7 @@ const IP_REPUTATION_CONFIG = {
   HIGH_FRAUD_SCORE: 75, // Score >= 75 is high risk
   MEDIUM_FRAUD_SCORE: 50, // Score >= 50 is medium risk
   BLOCK_ON_VPN: true, // Block VPN users from claiming rewards
+  BLOCK_ON_PROXY: true, // Block proxy users from claiming rewards
   BLOCK_ON_TOR: true, // Block Tor users
   BLOCK_ON_DATACENTER: true, // Block datacenter IPs
   BLOCK_ON_HIGH_FRAUD: true, // Block high fraud score
@@ -1018,6 +1019,9 @@ function buildResultFromCache(cached: typeof ipReputationCache.$inferSelect): Ip
   if (IP_REPUTATION_CONFIG.BLOCK_ON_VPN && cached.isVpn) {
     blockReasons.push('VPN detected');
   }
+  if (IP_REPUTATION_CONFIG.BLOCK_ON_PROXY && cached.isProxy) {
+    blockReasons.push('Proxy detected');
+  }
   if (IP_REPUTATION_CONFIG.BLOCK_ON_TOR && cached.isTor) {
     blockReasons.push('Tor network detected');
   }
@@ -1103,6 +1107,10 @@ async function queryIpQualityScore(ip: string): Promise<IpReputationResult> {
     // Check blocking conditions
     if (IP_REPUTATION_CONFIG.BLOCK_ON_VPN && isVpn) {
       blockReasons.push('VPN detected');
+      riskLevel = 'blocked';
+    }
+    if (IP_REPUTATION_CONFIG.BLOCK_ON_PROXY && isProxy) {
+      blockReasons.push('Proxy detected');
       riskLevel = 'blocked';
     }
     if (IP_REPUTATION_CONFIG.BLOCK_ON_TOR && isTor) {
