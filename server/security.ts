@@ -1043,11 +1043,11 @@ function buildResultFromCache(cached: typeof ipReputationCache.$inferSelect): Ip
 
 // Query IPQualityScore API
 async function queryIpQualityScore(ip: string): Promise<IpReputationResult> {
-  const apiKey = process.env.IPQS_API_KEY;
+  const apiKey = process.env.IPQUALITYSCORE_API_KEY || process.env.IPQS_API_KEY;
   
   // If no API key, return permissive result (allow but log warning)
   if (!apiKey) {
-    console.warn('[Security] IPQS_API_KEY not configured, skipping IP reputation check');
+    console.warn('[Security] IPQUALITYSCORE_API_KEY not configured, skipping IP reputation check');
     return {
       isClean: true,
       riskLevel: 'low',
