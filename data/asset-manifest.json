@@ -2,129 +2,185 @@
   "version": "1.0.0",
   "exportDate": "2026-01-30",
   "thumbnails": {
-    "description": "Course thumbnail images - one per course",
+    "description": "Course thumbnail images - numbered in course order",
     "path": "thumbnails/",
-    "files": {
-      "bmt_jar_racing_meme.png": {
+    "totalCourses": 20,
+    "files": [
+      {
+        "file": "01_bitcoin_vs_kaspa.png",
         "courseId": "66593d20-57a7-4714-83e3-d4bfc7a8170f",
-        "courseTitle": "Bitcoin vs Kaspa: The Next Evolution"
+        "courseTitle": "Bitcoin vs Kaspa: The Next Evolution",
+        "originalFile": "bmt_jar_racing_meme.png"
       },
-      "bmt_jar_professor_meme.png": {
+      {
+        "file": "02_dag_terminology.png",
         "courseId": "9d50a3b2-b4be-41d4-82f2-a4e0d9bf8626",
-        "courseTitle": "DAG Terminology"
+        "courseTitle": "DAG Terminology",
+        "originalFile": "bmt_jar_professor_meme.png"
       },
-      "bmt_jar_holding_kaspa_coin.png": {
-        "courseId": "e801a85a-21fb-483e-b58e-2086bae2ac60",
-        "courseTitle": "DAG and Kaspa: Understanding the Structure"
-      },
-      "bmt_jar_bridge_cyan_kaspa.png": {
-        "courseId": "course-bridging-l1-l2",
-        "courseTitle": "Bridging Kaspa L1 to Kasplex L2"
-      },
-      "bmt_jar_with_key_wallet.png": {
-        "courseId": "course-self-custody",
-        "courseTitle": "Self-Custody & Hardware Wallets"
-      },
-      "bmt_jar_gold_dollar_scale.png": {
-        "courseId": "course-sound-money",
-        "courseTitle": "Sound Money & Monetary Debasement"
-      },
-      "bmt_jar_teaching_dag_fundamentals.png": {
-        "courseId": "course-foundational-concepts",
-        "courseTitle": "Foundational Concepts"
-      },
-      "bmt_jar_with_data_structures.png": {
-        "courseId": "course-core-data-structures",
-        "courseTitle": "Core Data Structures"
-      },
-      "bmt_jar_ghostdag_ghost_theme.png": {
-        "courseId": "course-ghostdag-mechanics",
-        "courseTitle": "GHOSTDAG Mechanics"
-      },
-      "bmt_jar_with_settings_gears.png": {
-        "courseId": "course-consensus-parameters",
-        "courseTitle": "Consensus Parameters"
-      },
-      "bmt_jar_block_processing_factory.png": {
-        "courseId": "course-block-processing",
-        "courseTitle": "Block Processing"
-      },
-      "bmt_jar_balancing_difficulty.png": {
-        "courseId": "course-difficulty-adjustment",
-        "courseTitle": "Difficulty Adjustment (DAA)"
-      },
-      "bmt_jar_processing_transactions.png": {
-        "courseId": "course-transaction-processing",
-        "courseTitle": "Transaction Processing"
-      },
-      "bmt_jar_pruning_digital_garden.png": {
-        "courseId": "course-anticone-finalization",
-        "courseTitle": "Anticone Finalization & Safe Pruning"
-      },
-      "bmt_jar_cleaning_pruning_system.png": {
-        "courseId": "course-pruning-system",
-        "courseTitle": "Pruning System"
-      },
-      "bmt_jar_virtual_reality_state.png": {
-        "courseId": "course-virtual-state",
-        "courseTitle": "Virtual State"
-      },
-      "bmt_jar_security_shield_knight.png": {
-        "courseId": "course-finality-security",
-        "courseTitle": "Finality & Security (also used for MEV course)"
-      },
-      "bmt_jar_with_clock_timestamps.png": {
-        "courseId": "course-timestamps-median",
-        "courseTitle": "Timestamps & Median Time"
-      },
-      "bmt_jar_rocket_network_scaling.png": {
-        "courseId": "course-network-scaling",
-        "courseTitle": "Network & Scaling"
-      }
-    }
-  },
-  "lessonImages": {
-    "description": "Images used within lesson content",
-    "folders": {
-      "dag-and-kaspa": {
+      {
+        "file": "03_dag_and_kaspa.png",
         "courseId": "e801a85a-21fb-483e-b58e-2086bae2ac60",
         "courseTitle": "DAG and Kaspa: Understanding the Structure",
-        "files": {
-          "dag_graph_undirected.png": {
+        "originalFile": "bmt_jar_holding_kaspa_coin.png"
+      },
+      {
+        "file": "04_bridging_l1_to_l2.png",
+        "courseId": "course-bridging-l1-l2",
+        "courseTitle": "Bridging Kaspa L1 to Kasplex L2",
+        "originalFile": "bmt_jar_bridge_cyan_kaspa.png"
+      },
+      {
+        "file": "05_self_custody.png",
+        "courseId": "course-self-custody",
+        "courseTitle": "Self-Custody & Hardware Wallets",
+        "originalFile": "bmt_jar_with_key_wallet.png"
+      },
+      {
+        "file": "06_sound_money.png",
+        "courseId": "course-sound-money",
+        "courseTitle": "Sound Money & Monetary Debasement",
+        "originalFile": "bmt_jar_gold_dollar_scale.png"
+      },
+      {
+        "file": "07_foundational_concepts.png",
+        "courseId": "course-foundational-concepts",
+        "courseTitle": "Foundational Concepts",
+        "originalFile": "bmt_jar_teaching_dag_fundamentals.png"
+      },
+      {
+        "file": "08_core_data_structures.png",
+        "courseId": "course-core-data-structures",
+        "courseTitle": "Core Data Structures",
+        "originalFile": "bmt_jar_with_data_structures.png"
+      },
+      {
+        "file": "09_ghostdag_mechanics.png",
+        "courseId": "course-ghostdag-mechanics",
+        "courseTitle": "GHOSTDAG Mechanics",
+        "originalFile": "bmt_jar_ghostdag_ghost_theme.png"
+      },
+      {
+        "file": "10_consensus_parameters.png",
+        "courseId": "course-consensus-parameters",
+        "courseTitle": "Consensus Parameters",
+        "originalFile": "bmt_jar_with_settings_gears.png"
+      },
+      {
+        "file": "11_block_processing.png",
+        "courseId": "course-block-processing",
+        "courseTitle": "Block Processing",
+        "originalFile": "bmt_jar_block_processing_factory.png"
+      },
+      {
+        "file": "12_difficulty_adjustment.png",
+        "courseId": "course-difficulty-adjustment",
+        "courseTitle": "Difficulty Adjustment (DAA)",
+        "originalFile": "bmt_jar_balancing_difficulty.png"
+      },
+      {
+        "file": "13_transaction_processing.png",
+        "courseId": "course-transaction-processing",
+        "courseTitle": "Transaction Processing",
+        "originalFile": "bmt_jar_processing_transactions.png"
+      },
+      {
+        "file": "14_anticone_finalization.png",
+        "courseId": "course-anticone-finalization",
+        "courseTitle": "Anticone Finalization & Safe Pruning",
+        "originalFile": "bmt_jar_pruning_digital_garden.png"
+      },
+      {
+        "file": "15_pruning_system.png",
+        "courseId": "course-pruning-system",
+        "courseTitle": "Pruning System",
+        "originalFile": "bmt_jar_cleaning_pruning_system.png"
+      },
+      {
+        "file": "16_virtual_state.png",
+        "courseId": "course-virtual-state",
+        "courseTitle": "Virtual State",
+        "originalFile": "bmt_jar_virtual_reality_state.png"
+      },
+      {
+        "file": "17_finality_security.png",
+        "courseId": "course-finality-security",
+        "courseTitle": "Finality & Security",
+        "originalFile": "bmt_jar_security_shield_knight.png"
+      },
+      {
+        "file": "18_timestamps_median.png",
+        "courseId": "course-timestamps-median",
+        "courseTitle": "Timestamps & Median Time",
+        "originalFile": "bmt_jar_with_clock_timestamps.png"
+      },
+      {
+        "file": "19_network_scaling.png",
+        "courseId": "course-network-scaling",
+        "courseTitle": "Network & Scaling",
+        "originalFile": "bmt_jar_rocket_network_scaling.png"
+      },
+      {
+        "file": "20_mev_solutions.png",
+        "courseId": "course-mev-solutions",
+        "courseTitle": "MEV and Kaspa's Solutions",
+        "originalFile": "bmt_jar_security_shield_knight.png",
+        "note": "Same image as Finality & Security course"
+      }
+    ]
+  },
+  "lessonImages": {
+    "description": "Images used within lesson content - organized by course folder",
+    "path": "lesson-images/",
+    "folders": {
+      "dag-and-kaspa": {
+        "courseNumber": 3,
+        "courseId": "e801a85a-21fb-483e-b58e-2086bae2ac60",
+        "courseTitle": "DAG and Kaspa: Understanding the Structure",
+        "files": [
+          {
+            "file": "dag_graph_undirected.png",
             "lessonTopic": "What is a Graph",
             "description": "Illustration of an undirected graph with nodes and edges"
           },
-          "dag_graph_directed.png": {
+          {
+            "file": "dag_graph_directed.png",
             "lessonTopic": "What is a Directed Graph",
             "description": "Illustration of a directed graph with arrows showing direction"
           },
-          "dag_graph_acyclic.png": {
+          {
+            "file": "dag_graph_acyclic.png",
             "lessonTopic": "What is an Acyclic Graph",
             "description": "Illustration showing acyclic vs cyclic graphs"
           },
-          "dag_bitcoin_chain.png": {
+          {
+            "file": "dag_bitcoin_chain.png",
             "lessonTopic": "Bitcoin's Linear Chain",
             "description": "Visual of Bitcoin's single-parent block chain structure"
           },
-          "dag_kaspa_blockdag.png": {
+          {
+            "file": "dag_kaspa_blockdag.png",
             "lessonTopic": "Kaspa's BlockDAG",
             "description": "Visual of Kaspa's multi-parent BlockDAG structure"
           },
-          "dag_blocks_learning_meme.png": {
+          {
+            "file": "dag_blocks_learning_meme.png",
             "lessonTopic": "General DAG Learning",
             "description": "Meme-style educational image about DAG blocks"
           }
-        }
+        ]
       },
       "bitcoin-vs-kaspa": {
+        "courseNumber": 1,
         "courseId": "66593d20-57a7-4714-83e3-d4bfc7a8170f",
         "courseTitle": "Bitcoin vs Kaspa: The Next Evolution",
-        "files": {
-          "bitcoin_vs_kaspa_speed_meme.png": {
+        "files": [
+          {
+            "file": "bitcoin_vs_kaspa_speed_meme.png",
             "lessonTopic": "Speed Comparison",
             "description": "Meme comparing Bitcoin and Kaspa transaction speeds"
           }
-        }
+        ]
       }
     }
   },
@@ -132,52 +188,44 @@
     "lessons": {
       "description": "Videos embedded in lesson content",
       "path": "videos/lessons/",
-      "files": {
-        "9wXZuu-ZPXva7ncY_1765086712491.mp4": {
-          "description": "Lesson video content",
-          "originalPath": "/assets/9wXZuu-ZPXva7ncY_1765086712491.mp4"
+      "files": [
+        {
+          "file": "9wXZuu-ZPXva7ncY_1765086712491.mp4",
+          "description": "Lesson video content"
         },
-        "vAOXqFGD2JBUhEC1_1765086579605.mp4": {
-          "description": "Lesson video content",
-          "originalPath": "/assets/vAOXqFGD2JBUhEC1_1765086579605.mp4"
+        {
+          "file": "vAOXqFGD2JBUhEC1_1765086579605.mp4",
+          "description": "Lesson video content"
         }
-      },
+      ],
       "externalYouTube": [
-        {
-          "url": "https://youtu.be/LnnkwpQLRYw",
-          "description": "External YouTube lesson video"
-        },
-        {
-          "url": "https://youtu.be/XLjqBFUcpwc",
-          "description": "External YouTube lesson video"
-        },
-        {
-          "url": "https://youtu.be/ar2sGIMqasY",
-          "description": "External YouTube lesson video"
-        },
-        {
-          "url": "https://youtu.be/td3ABKikbFk",
-          "description": "External YouTube lesson video"
-        }
+        "https://youtu.be/LnnkwpQLRYw",
+        "https://youtu.be/XLjqBFUcpwc",
+        "https://youtu.be/ar2sGIMqasY",
+        "https://youtu.be/td3ABKikbFk"
       ]
     },
     "promo": {
       "description": "Promotional and marketing videos",
       "path": "videos/promo/",
-      "files": {
-        "bmt_university_crypto_promo_teaser.mp4": {
+      "files": [
+        {
+          "file": "bmt_university_crypto_promo_teaser.mp4",
           "description": "BMT University promotional teaser video"
         },
-        "bmt_university_kaspa_branded_promo.mp4": {
+        {
+          "file": "bmt_university_kaspa_branded_promo.mp4",
           "description": "Kaspa-branded promotional video"
         },
-        "bmt_university_title_card_reveal.mp4": {
+        {
+          "file": "bmt_university_title_card_reveal.mp4",
           "description": "Title card reveal animation"
         },
-        "kaspa_blockdag_visuals_no_text.mp4": {
+        {
+          "file": "kaspa_blockdag_visuals_no_text.mp4",
           "description": "BlockDAG visualization without text overlay"
         }
-      }
+      ]
     }
   }
 }

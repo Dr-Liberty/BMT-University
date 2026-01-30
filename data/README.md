@@ -10,30 +10,31 @@ data/
 ├── asset-manifest.json    # Maps every file to its course/lesson
 ├── README.md
 │
-├── thumbnails/            # COURSE THUMBNAILS (one per course)
-│   ├── bmt_jar_racing_meme.png           → Bitcoin vs Kaspa course
-│   ├── bmt_jar_professor_meme.png        → DAG Terminology course
-│   ├── bmt_jar_holding_kaspa_coin.png    → DAG and Kaspa course
-│   ├── bmt_jar_bridge_cyan_kaspa.png     → Bridging L1 to L2 course
-│   ├── bmt_jar_with_key_wallet.png       → Self-Custody course
-│   ├── bmt_jar_gold_dollar_scale.png     → Sound Money course
-│   ├── bmt_jar_teaching_dag_fundamentals.png → Foundational Concepts course
-│   ├── bmt_jar_with_data_structures.png  → Core Data Structures course
-│   ├── bmt_jar_ghostdag_ghost_theme.png  → GHOSTDAG Mechanics course
-│   ├── bmt_jar_with_settings_gears.png   → Consensus Parameters course
-│   ├── bmt_jar_block_processing_factory.png → Block Processing course
-│   ├── bmt_jar_balancing_difficulty.png  → Difficulty Adjustment course
-│   ├── bmt_jar_processing_transactions.png → Transaction Processing course
-│   ├── bmt_jar_pruning_digital_garden.png → Anticone Finalization course
-│   ├── bmt_jar_cleaning_pruning_system.png → Pruning System course
-│   ├── bmt_jar_virtual_reality_state.png → Virtual State course
-│   ├── bmt_jar_security_shield_knight.png → Finality & Security course
-│   ├── bmt_jar_with_clock_timestamps.png → Timestamps course
-│   └── bmt_jar_rocket_network_scaling.png → Network & Scaling course
+├── thumbnails/            # COURSE THUMBNAILS (numbered in course order)
+│   ├── 01_bitcoin_vs_kaspa.png
+│   ├── 02_dag_terminology.png
+│   ├── 03_dag_and_kaspa.png
+│   ├── 04_bridging_l1_to_l2.png
+│   ├── 05_self_custody.png
+│   ├── 06_sound_money.png
+│   ├── 07_foundational_concepts.png
+│   ├── 08_core_data_structures.png
+│   ├── 09_ghostdag_mechanics.png
+│   ├── 10_consensus_parameters.png
+│   ├── 11_block_processing.png
+│   ├── 12_difficulty_adjustment.png
+│   ├── 13_transaction_processing.png
+│   ├── 14_anticone_finalization.png
+│   ├── 15_pruning_system.png
+│   ├── 16_virtual_state.png
+│   ├── 17_finality_security.png
+│   ├── 18_timestamps_median.png
+│   ├── 19_network_scaling.png
+│   └── 20_mev_solutions.png
 │
 ├── lesson-images/         # LESSON-SPECIFIC IMAGES (organized by course)
 │   │
-│   ├── dag-and-kaspa/     # For "DAG and Kaspa: Understanding the Structure"
+│   ├── dag-and-kaspa/     # Course #3: DAG and Kaspa
 │   │   ├── dag_graph_undirected.png   → "What is a Graph" lesson
 │   │   ├── dag_graph_directed.png     → "What is a Directed Graph" lesson
 │   │   ├── dag_graph_acyclic.png      → "What is an Acyclic Graph" lesson
@@ -41,7 +42,7 @@ data/
 │   │   ├── dag_kaspa_blockdag.png     → "Kaspa's BlockDAG" lesson
 │   │   └── dag_blocks_learning_meme.png → General DAG learning image
 │   │
-│   └── bitcoin-vs-kaspa/  # For "Bitcoin vs Kaspa" course
+│   └── bitcoin-vs-kaspa/  # Course #1: Bitcoin vs Kaspa
 │       └── bitcoin_vs_kaspa_speed_meme.png → Speed comparison lesson
 │
 └── videos/
@@ -64,59 +65,46 @@ data/
 | Lessons | 88 |
 | Quizzes | 20 |
 | Quiz Questions | 158 |
-| Course Thumbnails | 25 |
+| Course Thumbnails | 20 |
 | Lesson Images | 7 |
 | Lesson Videos | 2 local + 4 YouTube |
 | Promo Videos | 4 |
 
-## File Descriptions
+## Course Thumbnails (Numbered in Order)
 
-### courses.json
-Complete course data including lessons, quizzes, and all quiz questions with answers.
+| # | Thumbnail | Course Title |
+|---|-----------|--------------|
+| 01 | 01_bitcoin_vs_kaspa.png | Bitcoin vs Kaspa: The Next Evolution |
+| 02 | 02_dag_terminology.png | DAG Terminology |
+| 03 | 03_dag_and_kaspa.png | DAG and Kaspa: Understanding the Structure |
+| 04 | 04_bridging_l1_to_l2.png | Bridging Kaspa L1 to Kasplex L2 |
+| 05 | 05_self_custody.png | Self-Custody & Hardware Wallets |
+| 06 | 06_sound_money.png | Sound Money & Monetary Debasement |
+| 07 | 07_foundational_concepts.png | Foundational Concepts |
+| 08 | 08_core_data_structures.png | Core Data Structures |
+| 09 | 09_ghostdag_mechanics.png | GHOSTDAG Mechanics |
+| 10 | 10_consensus_parameters.png | Consensus Parameters |
+| 11 | 11_block_processing.png | Block Processing |
+| 12 | 12_difficulty_adjustment.png | Difficulty Adjustment (DAA) |
+| 13 | 13_transaction_processing.png | Transaction Processing |
+| 14 | 14_anticone_finalization.png | Anticone Finalization & Safe Pruning |
+| 15 | 15_pruning_system.png | Pruning System |
+| 16 | 16_virtual_state.png | Virtual State |
+| 17 | 17_finality_security.png | Finality & Security |
+| 18 | 18_timestamps_median.png | Timestamps & Median Time |
+| 19 | 19_network_scaling.png | Network & Scaling |
+| 20 | 20_mev_solutions.png | MEV and Kaspa's Solutions |
 
-### asset-manifest.json
-Detailed mapping of every media file to its associated course/lesson. Use this to:
-- Find which course uses which thumbnail
-- Find which lesson uses which image
-- Map video files to their original asset paths
+*Note: Courses 17 and 20 share the same image (security shield theme)*
 
-## Path References in courses.json
+## Lesson Images by Course
 
-Thumbnails reference: `/assets/generated_images/bmt_jar_*.png`
-- Actual location: `data/thumbnails/bmt_jar_*.png`
+### Course #1: Bitcoin vs Kaspa
+| Image | Lesson Topic |
+|-------|--------------|
+| bitcoin_vs_kaspa_speed_meme.png | Speed Comparison |
 
-Lesson videos reference: `/assets/*.mp4`
-- Actual location: `data/videos/lessons/*.mp4`
-
-YouTube videos: External links (no local files)
-
-## Quick Reference: Thumbnail → Course
-
-| Thumbnail | Course |
-|-----------|--------|
-| bmt_jar_racing_meme.png | Bitcoin vs Kaspa: The Next Evolution |
-| bmt_jar_professor_meme.png | DAG Terminology |
-| bmt_jar_holding_kaspa_coin.png | DAG and Kaspa: Understanding the Structure |
-| bmt_jar_bridge_cyan_kaspa.png | Bridging Kaspa L1 to Kasplex L2 |
-| bmt_jar_with_key_wallet.png | Self-Custody & Hardware Wallets |
-| bmt_jar_gold_dollar_scale.png | Sound Money & Monetary Debasement |
-| bmt_jar_teaching_dag_fundamentals.png | Foundational Concepts |
-| bmt_jar_with_data_structures.png | Core Data Structures |
-| bmt_jar_ghostdag_ghost_theme.png | GHOSTDAG Mechanics |
-| bmt_jar_with_settings_gears.png | Consensus Parameters |
-| bmt_jar_block_processing_factory.png | Block Processing |
-| bmt_jar_balancing_difficulty.png | Difficulty Adjustment (DAA) |
-| bmt_jar_processing_transactions.png | Transaction Processing |
-| bmt_jar_pruning_digital_garden.png | Anticone Finalization & Safe Pruning |
-| bmt_jar_cleaning_pruning_system.png | Pruning System |
-| bmt_jar_virtual_reality_state.png | Virtual State |
-| bmt_jar_security_shield_knight.png | Finality & Security + MEV Solutions |
-| bmt_jar_with_clock_timestamps.png | Timestamps & Median Time |
-| bmt_jar_rocket_network_scaling.png | Network & Scaling |
-
-## Quick Reference: Lesson Images → Lessons
-
-### DAG and Kaspa Course
+### Course #3: DAG and Kaspa
 | Image | Lesson Topic |
 |-------|--------------|
 | dag_graph_undirected.png | What is a Graph |
@@ -124,11 +112,34 @@ YouTube videos: External links (no local files)
 | dag_graph_acyclic.png | What is an Acyclic Graph |
 | dag_bitcoin_chain.png | Bitcoin's Linear Chain |
 | dag_kaspa_blockdag.png | Kaspa's BlockDAG |
+| dag_blocks_learning_meme.png | General DAG Learning |
 
-### Bitcoin vs Kaspa Course
-| Image | Lesson Topic |
-|-------|--------------|
-| bitcoin_vs_kaspa_speed_meme.png | Speed Comparison |
+## Original Thumbnail Filenames
+
+For reference, here are the original filenames:
+
+| Numbered File | Original File |
+|---------------|---------------|
+| 01_bitcoin_vs_kaspa.png | bmt_jar_racing_meme.png |
+| 02_dag_terminology.png | bmt_jar_professor_meme.png |
+| 03_dag_and_kaspa.png | bmt_jar_holding_kaspa_coin.png |
+| 04_bridging_l1_to_l2.png | bmt_jar_bridge_cyan_kaspa.png |
+| 05_self_custody.png | bmt_jar_with_key_wallet.png |
+| 06_sound_money.png | bmt_jar_gold_dollar_scale.png |
+| 07_foundational_concepts.png | bmt_jar_teaching_dag_fundamentals.png |
+| 08_core_data_structures.png | bmt_jar_with_data_structures.png |
+| 09_ghostdag_mechanics.png | bmt_jar_ghostdag_ghost_theme.png |
+| 10_consensus_parameters.png | bmt_jar_with_settings_gears.png |
+| 11_block_processing.png | bmt_jar_block_processing_factory.png |
+| 12_difficulty_adjustment.png | bmt_jar_balancing_difficulty.png |
+| 13_transaction_processing.png | bmt_jar_processing_transactions.png |
+| 14_anticone_finalization.png | bmt_jar_pruning_digital_garden.png |
+| 15_pruning_system.png | bmt_jar_cleaning_pruning_system.png |
+| 16_virtual_state.png | bmt_jar_virtual_reality_state.png |
+| 17_finality_security.png | bmt_jar_security_shield_knight.png |
+| 18_timestamps_median.png | bmt_jar_with_clock_timestamps.png |
+| 19_network_scaling.png | bmt_jar_rocket_network_scaling.png |
+| 20_mev_solutions.png | bmt_jar_security_shield_knight.png |
 
 ## Export Date
 Last exported: January 30, 2026
