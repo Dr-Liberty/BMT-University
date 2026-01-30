@@ -1,159 +1,134 @@
 # BMT University Course Data
 
-This directory contains all course content for BMT University, exported for portability and version control.
+This directory contains all course content for BMT University, organized for portability and version control.
 
-## Contents
-
-### `courses.json`
-Complete course data including:
-- **20 Courses** with titles, descriptions, categories, difficulty levels, and BMT rewards
-- **88 Lessons** with full content text
-- **20 Quizzes** with passing scores and time limits
-- **158 Quiz Questions** with options, correct answers, and explanations
-
-### `images/`
-Course thumbnail images (PNG format):
-- `bmt_jar_*.png` - All course thumbnail images referenced in courses.json
-
-### `videos/`
-Lesson video files (MP4 format):
-- Local video assets used in lessons
-- Note: Some lessons also reference YouTube videos (external links preserved in courses.json)
-
-## Usage
-
-### Loading Course Data
-```javascript
-const fs = require('fs');
-const courseData = JSON.parse(fs.readFileSync('data/courses.json', 'utf8'));
-
-// Access courses
-courseData.courses.forEach(course => {
-  console.log(course.title);
-  console.log(`  Lessons: ${course.lessons.length}`);
-  console.log(`  Quiz questions: ${course.quiz?.questions?.length || 0}`);
-});
-```
-
-### Image Paths
-Thumbnails in `courses.json` reference paths like `/assets/generated_images/bmt_jar_*.png`.
-The actual files are in `data/images/`. Update paths as needed for your deployment.
-
-### Video Paths
-Local videos reference paths like `/assets/*.mp4`.
-The actual files are in `data/videos/`. YouTube links are external.
-
-## Data Structure
+## Folder Structure
 
 ```
-{
-  "exportDate": "2026-01-30T05:07:58.77277+00:00",
-  "version": "1.0.0",
-  "courses": [
-    {
-      "id": "course-id",
-      "title": "Course Title",
-      "description": "Full description...",
-      "shortDescription": "Brief summary",
-      "thumbnail": "/assets/generated_images/image.png",
-      "category": "fundamentals|technical|consensus|development",
-      "difficulty": "beginner|intermediate|advanced",
-      "duration": 23,
-      "bmtReward": 15000,
-      "isPublished": true,
-      "orderIndex": 1,
-      "lessons": [
-        {
-          "id": "lesson-id",
-          "title": "Lesson Title",
-          "content": "Full lesson content...",
-          "videoUrl": "/assets/video.mp4 or https://youtu.be/...",
-          "orderIndex": 0,
-          "duration": 5
-        }
-      ],
-      "quiz": {
-        "id": "quiz-id",
-        "title": "Quiz Title",
-        "passingScore": 70,
-        "timeLimit": 600,
-        "questions": [
-          {
-            "id": "question-id",
-            "question": "Question text?",
-            "options": [
-              {"id": "a", "text": "Option A", "isCorrect": true},
-              {"id": "b", "text": "Option B", "isCorrect": false}
-            ],
-            "explanation": "Why the answer is correct...",
-            "orderIndex": 0
-          }
-        ]
-      }
-    }
-  ]
-}
+data/
+├── courses.json           # All course data (lessons, quizzes, questions)
+├── asset-manifest.json    # Maps every file to its course/lesson
+├── README.md
+│
+├── thumbnails/            # COURSE THUMBNAILS (one per course)
+│   ├── bmt_jar_racing_meme.png           → Bitcoin vs Kaspa course
+│   ├── bmt_jar_professor_meme.png        → DAG Terminology course
+│   ├── bmt_jar_holding_kaspa_coin.png    → DAG and Kaspa course
+│   ├── bmt_jar_bridge_cyan_kaspa.png     → Bridging L1 to L2 course
+│   ├── bmt_jar_with_key_wallet.png       → Self-Custody course
+│   ├── bmt_jar_gold_dollar_scale.png     → Sound Money course
+│   ├── bmt_jar_teaching_dag_fundamentals.png → Foundational Concepts course
+│   ├── bmt_jar_with_data_structures.png  → Core Data Structures course
+│   ├── bmt_jar_ghostdag_ghost_theme.png  → GHOSTDAG Mechanics course
+│   ├── bmt_jar_with_settings_gears.png   → Consensus Parameters course
+│   ├── bmt_jar_block_processing_factory.png → Block Processing course
+│   ├── bmt_jar_balancing_difficulty.png  → Difficulty Adjustment course
+│   ├── bmt_jar_processing_transactions.png → Transaction Processing course
+│   ├── bmt_jar_pruning_digital_garden.png → Anticone Finalization course
+│   ├── bmt_jar_cleaning_pruning_system.png → Pruning System course
+│   ├── bmt_jar_virtual_reality_state.png → Virtual State course
+│   ├── bmt_jar_security_shield_knight.png → Finality & Security course
+│   ├── bmt_jar_with_clock_timestamps.png → Timestamps course
+│   └── bmt_jar_rocket_network_scaling.png → Network & Scaling course
+│
+├── lesson-images/         # LESSON-SPECIFIC IMAGES (organized by course)
+│   │
+│   ├── dag-and-kaspa/     # For "DAG and Kaspa: Understanding the Structure"
+│   │   ├── dag_graph_undirected.png   → "What is a Graph" lesson
+│   │   ├── dag_graph_directed.png     → "What is a Directed Graph" lesson
+│   │   ├── dag_graph_acyclic.png      → "What is an Acyclic Graph" lesson
+│   │   ├── dag_bitcoin_chain.png      → "Bitcoin's Linear Chain" lesson
+│   │   ├── dag_kaspa_blockdag.png     → "Kaspa's BlockDAG" lesson
+│   │   └── dag_blocks_learning_meme.png → General DAG learning image
+│   │
+│   └── bitcoin-vs-kaspa/  # For "Bitcoin vs Kaspa" course
+│       └── bitcoin_vs_kaspa_speed_meme.png → Speed comparison lesson
+│
+└── videos/
+    ├── lessons/           # LESSON VIDEOS (embedded in course content)
+    │   ├── 9wXZuu-ZPXva7ncY_1765086712491.mp4
+    │   └── vAOXqFGD2JBUhEC1_1765086579605.mp4
+    │
+    └── promo/             # PROMOTIONAL VIDEOS (marketing use)
+        ├── bmt_university_crypto_promo_teaser.mp4
+        ├── bmt_university_kaspa_branded_promo.mp4
+        ├── bmt_university_title_card_reveal.mp4
+        └── kaspa_blockdag_visuals_no_text.mp4
 ```
 
-## Seeding Database
+## Content Summary
 
-To seed a fresh database with this data:
+| Type | Count |
+|------|-------|
+| Courses | 20 |
+| Lessons | 88 |
+| Quizzes | 20 |
+| Quiz Questions | 158 |
+| Course Thumbnails | 25 |
+| Lesson Images | 7 |
+| Lesson Videos | 2 local + 4 YouTube |
+| Promo Videos | 4 |
 
-```javascript
-const courseData = require('./data/courses.json');
+## File Descriptions
 
-for (const course of courseData.courses) {
-  // Insert course
-  await db.insert(courses).values({
-    id: course.id,
-    title: course.title,
-    description: course.description,
-    shortDescription: course.shortDescription,
-    thumbnail: course.thumbnail,
-    category: course.category,
-    difficulty: course.difficulty,
-    duration: course.duration,
-    bmtReward: course.bmtReward,
-    isPublished: course.isPublished,
-    orderIndex: course.orderIndex
-  });
-  
-  // Insert lessons
-  for (const lesson of course.lessons) {
-    await db.insert(lessons).values({
-      id: lesson.id,
-      courseId: course.id,
-      title: lesson.title,
-      content: lesson.content,
-      videoUrl: lesson.videoUrl,
-      orderIndex: lesson.orderIndex,
-      duration: lesson.duration
-    });
-  }
-  
-  // Insert quiz and questions
-  if (course.quiz) {
-    await db.insert(quizzes).values({
-      id: course.quiz.id,
-      courseId: course.id,
-      title: course.quiz.title,
-      passingScore: course.quiz.passingScore,
-      timeLimit: course.quiz.timeLimit
-    });
-    
-    for (const q of course.quiz.questions) {
-      await db.insert(quizQuestions).values({
-        id: q.id,
-        quizId: course.quiz.id,
-        question: q.question,
-        options: q.options,
-        explanation: q.explanation,
-        orderIndex: q.orderIndex
-      });
-    }
-  }
-}
-```
+### courses.json
+Complete course data including lessons, quizzes, and all quiz questions with answers.
+
+### asset-manifest.json
+Detailed mapping of every media file to its associated course/lesson. Use this to:
+- Find which course uses which thumbnail
+- Find which lesson uses which image
+- Map video files to their original asset paths
+
+## Path References in courses.json
+
+Thumbnails reference: `/assets/generated_images/bmt_jar_*.png`
+- Actual location: `data/thumbnails/bmt_jar_*.png`
+
+Lesson videos reference: `/assets/*.mp4`
+- Actual location: `data/videos/lessons/*.mp4`
+
+YouTube videos: External links (no local files)
+
+## Quick Reference: Thumbnail → Course
+
+| Thumbnail | Course |
+|-----------|--------|
+| bmt_jar_racing_meme.png | Bitcoin vs Kaspa: The Next Evolution |
+| bmt_jar_professor_meme.png | DAG Terminology |
+| bmt_jar_holding_kaspa_coin.png | DAG and Kaspa: Understanding the Structure |
+| bmt_jar_bridge_cyan_kaspa.png | Bridging Kaspa L1 to Kasplex L2 |
+| bmt_jar_with_key_wallet.png | Self-Custody & Hardware Wallets |
+| bmt_jar_gold_dollar_scale.png | Sound Money & Monetary Debasement |
+| bmt_jar_teaching_dag_fundamentals.png | Foundational Concepts |
+| bmt_jar_with_data_structures.png | Core Data Structures |
+| bmt_jar_ghostdag_ghost_theme.png | GHOSTDAG Mechanics |
+| bmt_jar_with_settings_gears.png | Consensus Parameters |
+| bmt_jar_block_processing_factory.png | Block Processing |
+| bmt_jar_balancing_difficulty.png | Difficulty Adjustment (DAA) |
+| bmt_jar_processing_transactions.png | Transaction Processing |
+| bmt_jar_pruning_digital_garden.png | Anticone Finalization & Safe Pruning |
+| bmt_jar_cleaning_pruning_system.png | Pruning System |
+| bmt_jar_virtual_reality_state.png | Virtual State |
+| bmt_jar_security_shield_knight.png | Finality & Security + MEV Solutions |
+| bmt_jar_with_clock_timestamps.png | Timestamps & Median Time |
+| bmt_jar_rocket_network_scaling.png | Network & Scaling |
+
+## Quick Reference: Lesson Images → Lessons
+
+### DAG and Kaspa Course
+| Image | Lesson Topic |
+|-------|--------------|
+| dag_graph_undirected.png | What is a Graph |
+| dag_graph_directed.png | What is a Directed Graph |
+| dag_graph_acyclic.png | What is an Acyclic Graph |
+| dag_bitcoin_chain.png | Bitcoin's Linear Chain |
+| dag_kaspa_blockdag.png | Kaspa's BlockDAG |
+
+### Bitcoin vs Kaspa Course
+| Image | Lesson Topic |
+|-------|--------------|
+| bitcoin_vs_kaspa_speed_meme.png | Speed Comparison |
 
 ## Export Date
 Last exported: January 30, 2026
